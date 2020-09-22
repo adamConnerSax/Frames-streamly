@@ -4,15 +4,15 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: a8e6f5108170c25d6d6fb0d3f5c9372b6918e348aae7a0f37bb924fa1935ff5e
+-- hash: c5bcdc8ab916d305d2b3fed1c07972177a3d80992d589d2f8b3cda1e394a8e9a
 
-name:           Frames-Streamly
+name:           Frames-streamly
 version:        0.1.0.0
-synopsis:       A Streamly layer for Frames I/O
-description:    More information is available in the <https://github.com/adamConnerSax/Frames-Streamly/blob/master/Readme.md readme>.'
+synopsis:       A streamly layer for Frames I/O
+description:    More information is available in the <https://github.com/adamConnerSax/Frames-streamly/blob/master/Readme.md readme>.'
 category:       Data
-homepage:       https://github.com/adamConnerSax/Frames-Streamly#readme
-bug-reports:    https://github.com/adamConnerSax/Frames-Streamly/issues
+homepage:       https://github.com/adamConnerSax/Frames-streamly#readme
+bug-reports:    https://github.com/adamConnerSax/Frames-streamly/issues
 author:         Adam Conner-Sax
 maintainer:     adam_conner_sax@yahoo.com
 copyright:      2020 Adam Conner-Sax
@@ -24,7 +24,7 @@ extra-source-files:
 
 source-repository head
   type: git
-  location: https://github.com/adamConnerSax/Frames-Streamly
+  location: https://github.com/adamConnerSax/Frames-streamly
 
 library
   exposed-modules:
@@ -32,7 +32,7 @@ library
       Frames.Streamly.InCore
       Frames.Streamly.Transform
   other-modules:
-      Paths_Frames_Streamly
+      Paths_Frames_streamly
   hs-source-dirs:
       src
   ghc-options: -Wall -O2 -fdicts-strict -fmax-worker-args=16 -fspec-constr-recursive=16
