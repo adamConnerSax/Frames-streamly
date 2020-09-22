@@ -1,4 +1,4 @@
-# Frames-Streamly- v 0.1.0.0
+# Frames-streamly- v 0.1.0.0
 
 [![Build Status][travis-badge]][travis]
 [![Hackage][hackage-badge]][hackage]
@@ -6,7 +6,7 @@
 
 This library contains some useful functions for using the 
 [Frames](https://hackage.haskell.org/package/Frames) 
-package with [Streamly](https://hackage.haskell.org/package/streamly).
+package with [streamly](https://hackage.haskell.org/package/streamly).
 
 Frames has some built-in dependencies on the 
 [Pipes](https://hackage.haskell.org/package/pipes) package,
@@ -70,9 +70,9 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
-[travis]:        <https://travis-ci.org/adamConnerSax/Frames-Streamly>
-[travis-badge]:  <https://travis-ci.org/adamConnerSax/Frames-Streamly.svg?branch=master>
-[hackage]:       <https://hackage.haskell.org/package/Frames-Streamly>
-[hackage-badge]: <https://img.shields.io/hackage/v/Frames-Streamly.svg>
-[hackage-deps-badge]: <https://img.shields.io/hackage-deps/v/Frames-Streamly.svg>
-[hackage-deps]: <http://packdeps.haskellers.com/feed?needle=Frames-Streamly>
+[travis]:        <https://travis-ci.org/adamConnerSax/Frames-streamly>
+[travis-badge]:  <https://travis-ci.org/adamConnerSax/Frames-streamly.svg?branch=master>
+[hackage]:       <https://hackage.haskell.org/package/Frames-streamly>
+[hackage-badge]: <https://img.shields.io/hackage/v/Frames-streamly.svg>
+[hackage-deps-badge]: <https://img.shields.io/hackage-deps/v/Frames-streamly.svg>
+[hackage-deps]: <http://packdeps.haskellers.com/feed?needle=Frames-streamly>

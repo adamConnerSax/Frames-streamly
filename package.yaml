@@ -1,15 +1,15 @@
-name: Frames-Streamly
+name: Frames-streamly
 version: '0.1.0.0'
-synopsis: A Streamly layer for Frames I/O
+synopsis: A streamly layer for Frames I/O
 description:
-  More information is available in the <https://github.com/adamConnerSax/Frames-Streamly/blob/master/Readme.md
+  More information is available in the <https://github.com/adamConnerSax/Frames-streamly/blob/master/Readme.md
   readme>.'
 category: Data
 author: Adam Conner-Sax
 maintainer: adam_conner_sax@yahoo.com
 copyright: 2020 Adam Conner-Sax
 license: BSD3
-github: adamConnerSax/Frames-Streamly
+github: adamConnerSax/Frames-streamly
 extra-source-files:
 - Changelog.md
 - Readme.md
