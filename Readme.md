@@ -12,30 +12,49 @@ Frames has some built-in dependencies on the
 [Pipes](https://hackage.haskell.org/package/pipes) package,
 a few of which--primarily file I/O-- require users of Frames to use
 the Pipes package explicitly.  Streamly provides much of the same 
-functionality as Pipes and may be some users preferred interface.
+functionality as Pipes and may be some users preferred streaming 
+interface.
 
 This package replicates all the external-facing bits of Frames that
-rely on Pipes and uses Streamly instead.  It also fleshes out the Frames
+rely on Pipes and uses streamly instead.  It also fleshes out the Frames
 API in a couple of places:
 
 1. It adds some flexibility to the functions to write CSV files.  
 Frames supported formatting of fields for CSV 
 via a typeclass ```ShowCSV```.  That is supported here as well.  But
-this package also supports using the ```Show``` instance and
-creating field-by-field formatting on the fly for specific output via
+this package also supports using the ```Show``` instance, and, for more
+customized formatting,
+creating field-by-field formatting on the fly via
 a [Vinyl](https://hackage.haskell.org/package/vinyl) record of functions.
 Helpful combinators are provided for formatting any single field with
 a ```Show``` instance or a ```ShowCSV``` instance or a user provided
 function from the field type to ```Text```. 
 
 2. It adds some (experimental) support for ```Frame``` transformations 
-using Streamly streams as in intermediate state.  
+using Streamly streams as an intermediate state for transformations
+which may benefit from the concurrency available in streamly. Such
+transformations first make any foldable of Records 
+(including a ```Frame```) into a stream, apply a streamly transformation
+to a stream of some other records and then transforms those into a frame.
+So the result is a frame -> frame function but one that can take advantage
+of streamly's features at the cost of the transformation into a stream and then
+back in to a Frame.
 This allows use of the concurrent features of 
 Streamly for functions like ```mapM``` or ```mapMaybeM```.  
 
 3. It adds Streamly folds for the various stream to in-core 
 transformations in case users want to use them directly 
-in stream to Frame transformations.
+in stream to Frame transformations.  Frames exposed only the functions
+to transform an entire stream (a pipe producer) into Frames "AoS" 
+structure.  This library provides that functionality as well, in this case
+using streamly streams as the input.
+But here we also expose streamly folds from streams of
+Records to Frames so that more complex stream to Frame transformations
+can be done by the user.  For example, suppose you are doing
+a map/reduce on a large data set and you want to store the 
+grouped subsets as Frames for memory-efficiency.  These folds
+make that simpler.
+
 _______
 
 LICENSE (BSD-3-Clause)
