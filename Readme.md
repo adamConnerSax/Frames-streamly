@@ -1,6 +1,6 @@
 # Frames-streamly- v 0.1.0.0
 
-<!--- [![Build Status][travis-badge]][travis] --->
+[![Build Status][travis-badge]][travis]
 [![Hackage][hackage-badge]][hackage]
 [![Hackage Dependencies][hackage-deps-badge]][hackage-deps]
 
