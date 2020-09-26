@@ -56,7 +56,7 @@ grouped subsets as Frames for memory-efficiency.  These folds
 make that simpler.
 
 
-An example using some of the utilities is <here https://github.com/adamConnerSax/Frames-streamly/blob/master/examples/Main.hs>.
+An example using some of the utilities is [here](https://github.com/adamConnerSax/Frames-streamly/blob/master/examples/Main.hs).
 _______
 
 LICENSE (BSD-3-Clause)
