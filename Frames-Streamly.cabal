@@ -4,7 +4,7 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: e0f3e406c6d15f9ccfb67cdcc1709ce158636a788df69ee44eddfac82380c985
+-- hash: 08f10e29d60a8b555f4bca1c0904ac85d2b35f05bfc03bf2b478af236dfb11db
 
 name:           Frames-streamly
 version:        0.1.0.0
@@ -17,6 +17,7 @@ author:         Adam Conner-Sax
 maintainer:     adam_conner_sax@yahoo.com
 copyright:      2020 Adam Conner-Sax
 license:        BSD3
+license-file:   LICENSE
 build-type:     Simple
 extra-source-files:
     Changelog.md

@@ -9,6 +9,7 @@ author: Adam Conner-Sax
 maintainer: adam_conner_sax@yahoo.com
 copyright: 2020 Adam Conner-Sax
 license: BSD3
+license-file: LICENSE
 github: adamConnerSax/Frames-streamly
 extra-source-files:
 - Changelog.md
