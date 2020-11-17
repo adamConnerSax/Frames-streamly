@@ -490,7 +490,7 @@ streamTableEither = streamTableEitherOpt Frames.defaultParser
 -- NB:  If the inferred/given @rs@ is different from the actual file row-type, things will..go awry.
 streamTableEitherOpt
     :: forall rs t m.
-    (MonadIO m
+    (Monad m
     , IsStream t
     , Vinyl.RMap rs
     , Frames.ReadRec rs)
@@ -511,7 +511,7 @@ streamTableEitherOpt opts =
 -- NB:  If the inferred/given @rs@ is different from the actual file row-type, things will..go awry.
 streamTableMaybe
     :: forall rs t m.
-    (MonadIO m
+    (Monad m
     , IsStream t
     , Vinyl.RMap rs
     , Frames.ReadRec rs)
@@ -525,7 +525,7 @@ streamTableMaybe = streamTableMaybeOpt Frames.defaultParser
 -- NB:  If the inferred/given @rs@ is different from the actual file row-type, things will..go awry.
 streamTableMaybeOpt
     :: forall rs t m.
-    (MonadIO m
+    (Monad m
     , IsStream t
     , Vinyl.RMap rs
     , Frames.ReadRec rs)
@@ -541,7 +541,7 @@ streamTableMaybeOpt opts = Streamly.map recEitherToMaybe . streamTableEitherOpt 
 -- NB:  If the inferred/given @rs@ is different from the actual file row-type, things will go awry.
 streamTable
     :: forall rs t m.
-    (MonadIO m
+    (Monad m
     , IsStream t
     , Vinyl.RMap rs
     , Frames.ReadRec rs
@@ -556,7 +556,7 @@ streamTable = streamTableOpt Frames.defaultParser
 -- NB:  If the inferred/given @rs@ is different from the actual file row-type, things will go awry.
 streamTableOpt
     :: forall rs t m.
-    (MonadIO m
+    (Monad m
     , IsStream t
     , Vinyl.RMap rs
     , Frames.ReadRec rs
