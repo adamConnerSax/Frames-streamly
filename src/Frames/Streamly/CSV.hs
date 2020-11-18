@@ -474,7 +474,7 @@ readTableOpt opts = streamTableOpt opts . word8ToTextLines . Streamly.File.toByt
 -- NB:  If the inferred/given @rs@ is different from the actual file row-type, things will go awry.
 streamTableEither
     :: forall rs t m.
-    (MonadIO m
+    (Monad m
     , IsStream t
     , Vinyl.RMap rs
     , Frames.ReadRec rs)
