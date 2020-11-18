@@ -4,10 +4,10 @@ cabal-version: 1.12
 --
 -- see: https://github.com/sol/hpack
 --
--- hash: 08f10e29d60a8b555f4bca1c0904ac85d2b35f05bfc03bf2b478af236dfb11db
+-- hash: 80103b542d89f67cc39bfb6ed003277bb356af7e394e2fd6fe3fa6df05454eef
 
 name:           Frames-streamly
-version:        0.1.0.0
+version:        0.1.0.1
 synopsis:       A streamly layer for Frames I/O
 description:    More information is available in the <https://github.com/adamConnerSax/Frames-streamly/blob/master/Readme.md readme>.'
 category:       Data
