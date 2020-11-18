@@ -1,5 +1,5 @@
 name: Frames-streamly
-version: '0.1.0.1'
+version: '0.1.0.2'
 synopsis: A streamly layer for Frames I/O
 description:
   More information is available in the <https://github.com/adamConnerSax/Frames-streamly/blob/master/Readme.md
