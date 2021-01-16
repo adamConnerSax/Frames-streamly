@@ -35,7 +35,7 @@ module Frames.Streamly.Transform
 where
 
 import qualified Frames.Streamly.InCore as FS
-import Prelude hiding (filter)
+import Prelude hiding (filter, mapMaybe)
 
 import qualified Streamly                               as Streamly
 import qualified Streamly.Prelude                       as Streamly
@@ -60,14 +60,14 @@ transform ::
 transform f = FS.inCoreAoS . f . Streamly.fromFoldable
 {-# INLINE transform #-}
 
--- | Filter using streamly 
+-- | Filter using streamly
 filter :: (Frames.RecVec as) => (Frames.Record as -> Bool) -> Frames.FrameRec as -> Frames.FrameRec as
 filter f frame = runST $ transform (Streamly.serially . Streamly.filter f) frame
 {-# INLINE filter #-}
 
 -- | map using speculative streams (concurrency that preserves ordering of results).
 concurrentMapM :: (Prim.PrimMonad m
-                  , Streamly.MonadAsync m                  
+                  , Streamly.MonadAsync m
                   , Frames.RecVec as
                   , Frames.RecVec bs
                   ) => (Frames.Record as -> m (Frames.Record bs)) -> Frames.FrameRec as -> m (Frames.FrameRec bs)
@@ -83,11 +83,9 @@ mapMaybe f frame = runST $ transform (Streamly.aheadly . Streamly.mapMaybe f) fr
 
 -- | mapMaybeM using speculative streams (concurrency that preserves ordering of results).
 concurrentMapMaybeM :: (Prim.PrimMonad m
-                       , Streamly.MonadAsync m                  
+                       , Streamly.MonadAsync m
                        , Frames.RecVec as
                        , Frames.RecVec bs
                        ) => (Frames.Record as -> m (Maybe (Frames.Record bs))) -> Frames.FrameRec as -> m (Frames.FrameRec bs)
 concurrentMapMaybeM f = transform (Streamly.aheadly . Streamly.mapMaybeM f)
 {-# INLINE concurrentMapMaybeM #-}
-
-

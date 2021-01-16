@@ -34,12 +34,12 @@ module Frames.Streamly.InCore
     , VectorMFor
     , VectorMs
     , Vectors
-    , RecVec(..)    
-    
+    , RecVec(..)
+
     )
 where
 
-import qualified Streamly                               as Streamly
+import qualified Streamly
 import qualified Streamly.Prelude                       as Streamly
 import qualified Streamly.Data.Fold                     as Streamly.Fold
 import qualified Streamly.Internal.Data.Fold            as Streamly.Fold
@@ -48,7 +48,7 @@ import qualified Control.Monad.Primitive                as Prim
 
 import qualified Data.Vinyl                             as Vinyl
 
-import qualified Frames                                 as Frames
+import qualified Frames
 import qualified Frames.InCore                          as Frames
 import           Frames.InCore                           (VectorFor, VectorMFor, VectorMs, Vectors, RecVec(..), toAoS)
 
@@ -65,11 +65,11 @@ inCoreSoA_F = Streamly.Fold.mkFold feed initial fin
                       >>= flip feed row . (i, sz*2,)
           | otherwise = do Frames.writeRec (Proxy::Proxy rs) i mvs' row
                            return (i+1, sz, mvs')
-                         
+
         initial = do
           mvs <- Frames.allocRec (Proxy :: Proxy rs) Frames.initialCapacity
           return (0, Frames.initialCapacity, mvs)
-          
+
         fin (n, _, mvs') =
           do vs <- Frames.freezeRec (Proxy::Proxy rs) n mvs'
              return . (n,) $ Frames.produceRec (Proxy::Proxy rs) vs
@@ -102,7 +102,7 @@ inCoreAoS'_F ::  forall ss rs m. (Prim.PrimMonad m, Frames.RecVec rs)
            -> Streamly.Fold.Fold m (Frames.Record rs) (Frames.FrameRec ss)
 inCoreAoS'_F f  = fmap (uncurry Frames.toAoS . aux) inCoreSoA_F
   where aux (x,y) = (x, f y)
-{-# INLINE inCoreAoS'_F #-}  
+{-# INLINE inCoreAoS'_F #-}
 
 -- | Perform the more general AoS fold on a stream of records.
 inCoreAoS' ::  forall ss rs m. (Prim.PrimMonad m, Frames.RecVec rs)
@@ -110,5 +110,4 @@ inCoreAoS' ::  forall ss rs m. (Prim.PrimMonad m, Frames.RecVec rs)
            -> Streamly.SerialT m (Frames.Record rs)
            -> m (Frames.FrameRec ss)
 inCoreAoS' f = Streamly.fold (inCoreAoS'_F f)
-{-# INLINE inCoreAoS' #-}  
-
+{-# INLINE inCoreAoS' #-}
