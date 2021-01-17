@@ -94,12 +94,14 @@ test-suite Strictness
     , bytestring-strict-builder
     , mtl
     , foldl
+    , primitive
     , relude
     , streamly
     , streamly-bytestring
     , strict
     , clock
     , text
+    , vector
     , vinyl
   mixins:  base hiding (Prelude)
          , relude (Relude as Prelude

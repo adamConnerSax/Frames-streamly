@@ -18,6 +18,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE UndecidableSuperClasses #-}
+--{-# OPTIONS_GHC -O0 #-}
 {-|
 Module      : Frames.Streamly.CSV
 Description : CSV parsing/formatting tools for the Frames library, operating via streamly Streams.
@@ -70,6 +71,11 @@ module Frames.Streamly.CSV
     , writeLines
     , writeLines'
     , word8ToTextLines
+    -- * debugging
+    , streamWord8
+    , streamTextLines
+    , streamTokenized
+    , streamParsed
     )
 where
 
@@ -623,9 +629,16 @@ instance StrictReadRec '[] where
 
 instance (Frames.Parseable t, StrictReadRec ts, KnownSymbol s) => StrictReadRec (s Frames.:-> t ': ts) where
   strictReadRec [] = V.Compose (Strict.Left mempty) V.:& strictReadRec []
-  strictReadRec (!h:t) = maybe (V.Compose (Strict.Left (T.copy h)))
-                        (V.Compose . Strict.Right . V.Field)
-                        (Frames.parse' h) V.:& strictReadRec t
+  strictReadRec (!h : t) = strictMaybe (V.Compose (Strict.Left (T.copy h)))
+                           (V.Compose . Strict.Right . V.Field)
+                           (Frames.parse' h) V.:& strictReadRec t where
+
+strictCons !a !b = a V.:& b
+
+strictMaybe :: b -> (a -> b) -> Maybe a -> b
+strictMaybe !b f ma = case ma of
+  Nothing -> b
+  Just !a' -> f a'
 
 rtraverse
   :: Applicative h
@@ -633,11 +646,11 @@ rtraverse
   -> V.Rec f rs
   -> h (V.Rec g rs)
 rtraverse _ V.RNil      = pure V.RNil
-rtraverse f (!x V.:& xs) = (V.:&) <$> f x <*> rtraverse f xs
+rtraverse f (x V.:& xs) = (V.:&) <$> (f x)  <*> rtraverse f xs
 --{-# INLINABLE rtraverse #-}
 
 recMaybe :: V.Rec (Maybe V.:. V.ElField) cs -> Maybe (V.Rec V.ElField cs)
-recMaybe = rtraverse V.getCompose
+recMaybe  = rtraverse V.getCompose
 --{-# INLINEABLE recMaybe #-}
 -- tracing fold
 {-
@@ -651,3 +664,19 @@ runningCountF startMsg countMsg endMsg = Streamly.Fold.Fold step start done wher
     return (n+1)
   done _ = liftIO $ T.putStrLn endMsg
 -}
+-- For debugging
+streamWord8 :: (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> t m Word8
+streamWord8 =  Streamly.File.toBytes
+{-# INLINE streamWord8 #-}
+
+streamTextLines :: (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> t m Text
+streamTextLines = word8ToTextLines2 . streamWord8
+{-# INLINE streamTextLines #-}
+
+streamTokenized :: (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> t m [Text]
+streamTokenized =  Streamly.map (Frames.tokenizeRow Frames.defaultParser) . streamTextLines
+{-# INLINE streamTokenized #-}
+
+streamParsed :: (V.RMap rs, StrictReadRec rs) => (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> t m (V.Rec (Either Text V.:. V.ElField) rs)
+streamParsed =  Streamly.map (recUnStrictEither . strictReadRec . Frames.tokenizeRow Frames.defaultParser) . streamTextLines
+{-# INLINE streamParsed #-}

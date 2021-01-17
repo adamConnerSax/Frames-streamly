@@ -10,6 +10,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
 --{-# OPTIONS_GHC -O0 #-}
 module Main where
 
@@ -43,6 +44,10 @@ import qualified Streamly.Internal.Data.Array  as Streamly.Data.Array
 import qualified Streamly.Internal.Memory.Array as Streamly.Memory.Array
 
 import qualified System.Clock
+
+import qualified Data.Vector as V
+import qualified Data.Vector.Mutable as VM
+import qualified Control.Monad.Primitive as Prim
 
 F.tableTypes' pumsACS1YrRowGen
 
@@ -130,9 +135,62 @@ testInIO = do
   bldr <- Streamly.foldl' (\acc !x -> let b = S.runPut (S.put x) in b `seq` (acc <> BSB.bytes b)) mempty sPUMSRCToS
   print $ BS.length $ BSB.builderBytes bldr
 
+  putTextLn "In stages"
+  putTextLn "Word8: "
+  w8Array <- Streamly.Data.Array.fromStream $ Streamly.File.toBytes pumsCSV
+  putTextLn $ "w8 array is " <> show (Streamly.Data.Array.length w8Array) <> " long."
+
+  putTextLn "To Vector"
+  putTextLn "Word8: "
+  vWord8 <- streamToVector $ FStreamly.streamWord8 pumsCSV
+  putTextLn $ "w8 vector is " <> show (V.length vWord8) <> " long."
+
+  putTextLn "text lines (via vector)"
+  vTextLine <- streamToVector $ FStreamly.streamTextLines pumsCSV
+  putTextLn $ "vTextLine has " <> show (V.length vTextLine) <> " elements."
+
+  putTextLn "text lines (via mutable vector)"
+  mvTextLine <- streamToVector2 100 $ FStreamly.streamTextLines pumsCSV
+  putTextLn $ "mvTextLine has " <> show (V.length mvTextLine) <> " elements."
+
+  putTextLn "tokenized (via vector)"
+  vTokenized <- streamToVector $ FStreamly.streamTokenized pumsCSV
+  putTextLn $ "vTokenized has " <> show (V.length vTokenized) <> " elements."
+
+  putTextLn "parsed (via vector)"
+  vParsed :: V.Vector (F.Rec (Either Text F.:. F.ElField) (F.RecordColumns PUMS_Raw)) <- streamToVector $ FStreamly.streamParsed pumsCSV
+  putTextLn $ "vParsed has " <> show (V.length vParsed) <> " elements."
+{-
   putTextLn "Copy to boxed array"
   array <- Streamly.Data.Array.fromStream $ sPUMSRunningCount
   putTextLn $ "array has " <> show (Streamly.Data.Array.length array) <> " elements."
+-}
+
+streamToVector :: Monad m => Streamly.SerialT m a -> m (V.Vector a)
+streamToVector = V.unfoldrM strictUncons
+
+strictUncons :: Monad m => Streamly.SerialT m a -> m (Maybe (a, Streamly.SerialT m a))
+strictUncons s = do
+  lu <- Streamly.uncons s
+  case lu of
+    Nothing -> return Nothing
+    Just (!a, s') -> return $ Just (a, s')
+
+streamToVector2 :: (Monad m, Prim.PrimMonad m) => Int -> Streamly.SerialT m a -> m (V.Vector a)
+streamToVector2 initialSize s0 = do
+  let go curLength curN s v = do
+        mNext <- Streamly.uncons s
+        case mNext of
+          Nothing -> V.unsafeFreeze (VM.unsafeTake curN v)
+          Just (!a, s') -> do
+            (curLength', v') <- if curN < curLength
+                                then return (curLength, v)
+                                else VM.grow v (2 * curLength) >>= \v' -> return (2 * curLength, v')
+            VM.write v' curN a
+            go curLength' (curN + 1) s' v'
+  v0 <- VM.new initialSize
+  go initialSize 0 s0 v0
+
 
 runningCountF :: ST.MonadIO m => T.Text -> (Int -> T.Text) -> T.Text -> Streamly.Fold.Fold m a ()
 runningCountF startMsg countMsg endMsg = Streamly.Fold.Fold step start done where
