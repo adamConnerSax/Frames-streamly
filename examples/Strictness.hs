@@ -49,6 +49,9 @@ import qualified Data.Vector as V
 import qualified Data.Vector.Mutable as VM
 import qualified Control.Monad.Primitive as Prim
 
+import qualified Data.Strict.Either as Strict
+import qualified Data.Strict.Maybe as Strict
+
 F.tableTypes' pumsACS1YrRowGen
 
 main :: IO ()
@@ -114,6 +117,16 @@ testInIO = do
   putTextLn "Testing Frames.Streamly.inCoreAoS:"
   fPums <- FStreamly.inCoreAoS sPUMSRawRows
   putTextLn $ "raw PUMS frame has " <> show (FL.fold FL.length fPums) <> " rows."
+
+  putTextLn "frame to vec"
+  vPostFrame :: V.Vector PUMS_Raw <- FL.foldM FL.vectorM fPums
+  putTextLn $ "vPostFrame has " <> show (V.length vPostFrame) <> " rows"
+
+  putTextLn "frame to array"
+  aPostFrame :: Streamly.Data.Array.Array PUMS_Raw <- Streamly.fold Streamly.Data.Array.write $ Streamly.fromFoldable fPums
+  putTextLn $ "aPostFrame has " <> show (Streamly.Data.Array.length aPostFrame) <> " rows"
+
+{-
   -- Previous goes up to 28MB, looks like via doubling.  Then to 0 (collects fPums after counting?)
   -- This one then climbs to 10MB, rows are smaller.  No large leaks.
   let f :: PUMS_Raw -> F.Record SmallRow
@@ -158,8 +171,13 @@ testInIO = do
   putTextLn $ "vTokenized has " <> show (V.length vTokenized) <> " elements."
 
   putTextLn "parsed (via vector)"
-  vParsed :: V.Vector (F.Rec (Either Text F.:. F.ElField) (F.RecordColumns PUMS_Raw)) <- streamToVector $ FStreamly.streamParsed pumsCSV
+  vParsed :: V.Vector (F.Rec (Strict.Either Text F.:. F.ElField) (F.RecordColumns PUMS_Raw)) <- streamToVector $ FStreamly.streamParsed pumsCSV
   putTextLn $ "vParsed has " <> show (V.length vParsed) <> " elements."
+
+  putTextLn "parsedMaybe (via vector)"
+  vParsedMaybe :: V.Vector (F.Rec (Maybe F.:. F.ElField) (F.RecordColumns PUMS_Raw)) <- streamToVector $ FStreamly.streamParsedMaybe pumsCSV
+  putTextLn $ "vParsedMaybe has " <> show (V.length vParsedMaybe) <> " elements."
+-}
 {-
   putTextLn "Copy to boxed array"
   array <- Streamly.Data.Array.fromStream $ sPUMSRunningCount
@@ -175,6 +193,7 @@ strictUncons s = do
   case lu of
     Nothing -> return Nothing
     Just (!a, s') -> return $ Just (a, s')
+{-# INLINE strictUncons #-}
 
 streamToVector2 :: (Monad m, Prim.PrimMonad m) => Int -> Streamly.SerialT m a -> m (V.Vector a)
 streamToVector2 initialSize s0 = do

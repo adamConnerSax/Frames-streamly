@@ -76,6 +76,7 @@ module Frames.Streamly.CSV
     , streamTextLines
     , streamTokenized
     , streamParsed
+    , streamParsedMaybe
     )
 where
 
@@ -629,9 +630,11 @@ instance StrictReadRec '[] where
 
 instance (Frames.Parseable t, StrictReadRec ts, KnownSymbol s) => StrictReadRec (s Frames.:-> t ': ts) where
   strictReadRec [] = V.Compose (Strict.Left mempty) V.:& strictReadRec []
-  strictReadRec (!h : t) = strictMaybe (V.Compose (Strict.Left (T.copy h)))
+  strictReadRec (!h : t) = maybe
+                           (V.Compose (Strict.Left (T.copy h)))
                            (V.Compose . Strict.Right . V.Field)
-                           (Frames.parse' h) V.:& strictReadRec t where
+                           (Frames.parse' h)
+                           V.:& strictReadRec t
 
 strictCons !a !b = a V.:& b
 
@@ -639,6 +642,10 @@ strictMaybe :: b -> (a -> b) -> Maybe a -> b
 strictMaybe !b f ma = case ma of
   Nothing -> b
   Just !a' -> f a'
+
+--strictParseCons :: (KnownSymbol s, Frames.Parseable t)
+--                => Text -> V.Rec (Strict.Either Text V.:. V.ElField) rs -> V.Rec (Strict.Either Text V.:. V.ElField) (s Frames.:-> t ': rs)
+strictParseCons !h !rs = let !parsed = Frames.parse' h in parsed V.:& rs
 
 rtraverse
   :: Applicative h
@@ -674,9 +681,13 @@ streamTextLines = word8ToTextLines2 . streamWord8
 {-# INLINE streamTextLines #-}
 
 streamTokenized :: (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> t m [Text]
-streamTokenized =  Streamly.map (Frames.tokenizeRow Frames.defaultParser) . streamTextLines
+streamTokenized =  Streamly.map (fmap T.copy . Frames.tokenizeRow Frames.defaultParser) . streamTextLines
 {-# INLINE streamTokenized #-}
 
-streamParsed :: (V.RMap rs, StrictReadRec rs) => (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> t m (V.Rec (Either Text V.:. V.ElField) rs)
-streamParsed =  Streamly.map (recUnStrictEither . strictReadRec . Frames.tokenizeRow Frames.defaultParser) . streamTextLines
+streamParsed :: (V.RMap rs, StrictReadRec rs) => (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> t m (V.Rec (Strict.Either Text V.:. V.ElField) rs)
+streamParsed =  Streamly.map (strictReadRec . Frames.tokenizeRow Frames.defaultParser) . streamTextLines
 {-# INLINE streamParsed #-}
+
+streamParsedMaybe :: (V.RMap rs, StrictReadRec rs) => (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> t m (V.Rec (Maybe V.:. V.ElField) rs)
+streamParsedMaybe =  Streamly.map (recStrictEitherToMaybe . strictReadRec . Frames.tokenizeRow Frames.defaultParser) . streamTextLines
+{-# INLINE streamParsedMaybe #-}
