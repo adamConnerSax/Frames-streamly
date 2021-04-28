@@ -36,6 +36,8 @@ library
       Frames.Streamly.CSV
       Frames.Streamly.InCore
       Frames.Streamly.Transform
+  autogen-modules:
+     Paths_Frames_streamly
   hs-source-dirs:
       src
   ghc-options: -Wall -O2 -fdicts-strict -fmax-worker-args=16 -fspec-constr-recursive=16
@@ -81,8 +83,8 @@ test-suite Strictness
       Paths_Frames_streamly
   hs-source-dirs:
       examples
---  ghc-options: -Wall -O2 -fdicts-strict -fmax-worker-args=16 -fspec-constr-recursive=16
-  ghc-options: -Wall -prof -fprof-auto -eventlog -rtsopts -fexternal-interpreter -fdicts-strict -fmax-worker-args=16 -fspec-constr-recursive=16
+  ghc-options: -Wall -O2 -fdicts-strict -fmax-worker-args=16 -fspec-constr-recursive=16
+--  ghc-options: -Wall -prof -fprof-auto -eventlog -rtsopts -fexternal-interpreter -fdicts-strict -fmax-worker-args=16 -fspec-constr-recursive=16
   build-depends:
       Frames
     , Frames-streamly
