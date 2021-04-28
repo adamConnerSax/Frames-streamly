@@ -7,7 +7,7 @@ cabal-version: 2.2
 -- hash: f129113aa17f26529351746660f5b3ada35ea09fec7866ca91d25902f08ac8be
 
 name:           Frames-streamly
-version:        0.1.0.2
+version:        0.1.0.3
 synopsis:       A streamly layer for Frames I/O
 description:    More information is available in the <https://github.com/adamConnerSax/Frames-streamly/blob/master/Readme.md readme>.'
 category:       Data
@@ -41,10 +41,10 @@ library
   ghc-options: -Wall -O2 -fdicts-strict -fmax-worker-args=16 -fspec-constr-recursive=16
   build-depends:
       Frames >=0.6 && <0.8
-    , base >=4.12.0 && <4.15
+    , base >=4.12.0 && <4.17
     , exceptions >=0.10.0 && <0.11
     , primitive >=0.7 && <0.8
-    , relude >=0.7.0 && < 0.8
+    , relude >=1.0.0 && < 1.1
     , streamly >=0.7 && <0.8
     , strict >= 0.4 && < 0.5
     , text >=1.2.3 && <1.3

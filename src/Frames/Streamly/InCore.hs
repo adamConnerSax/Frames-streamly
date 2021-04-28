@@ -52,8 +52,6 @@ import qualified Frames
 import qualified Frames.InCore                          as Frames
 import           Frames.InCore                           (VectorFor, VectorMFor, VectorMs, Vectors, RecVec(..), toAoS)
 
-import Data.Proxy (Proxy(..))
-
 
 -- | Fold a stream of 'Vinyl' records into SoA (Structure-of-Arrays) form.
 -- Here as a 'streamly' fold, so it may be deployed along with other folds or on only part of a stream.

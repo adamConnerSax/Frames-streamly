@@ -91,17 +91,14 @@ import qualified Streamly.Internal.Memory.Array.Types as Streamly.Array
 import qualified Streamly.Internal.FileSystem.File      as Streamly.File
 import qualified Streamly.Internal.Data.Unfold          as Streamly.Unfold
 import           Control.Monad.Catch                     ( MonadCatch )
-import           Control.Monad.IO.Class                  ( MonadIO )
 
 import qualified Data.Strict.Either as Strict
-import qualified Data.Strict.Maybe as Strict
 import qualified Data.Text                              as T
 
 import qualified Data.Vinyl                             as Vinyl
 import qualified Data.Vinyl.Functor                     as Vinyl
 import qualified Data.Vinyl.TypeLevel                   as Vinyl
 import qualified Data.Vinyl.Class.Method                as Vinyl
---import           Data.Word                               ( Word8 )
 
 import qualified Frames                                 as Frames
 import qualified Frames.CSV                             as Frames
@@ -110,7 +107,6 @@ import qualified Frames.ColumnTypeable                  as Frames
 import qualified Data.Vinyl as V
 import qualified Data.Vinyl.Functor as V (Compose(..), (:.))
 import GHC.TypeLits (KnownSymbol)
---import Data.Proxy (Proxy (..))
 
 
 
@@ -193,7 +189,7 @@ streamSVClass
   -> T.Text -- ^ column separator
   -> t m (Frames.Record rs)  -- ^ stream of Records
   -> t m T.Text -- ^ stream of 'Text' rows
-streamSVClass toText sep s =
+streamSVClass toTxt sep s =
   (T.intercalate sep . fmap T.pack $ Frames.columnHeaders (Proxy :: Proxy (Frames.Record rs)))
   `Streamly.cons`
   (Streamly.map (T.intercalate sep . Vinyl.recordToList . Vinyl.rmapMethod @c aux) s)
@@ -201,7 +197,7 @@ streamSVClass toText sep s =
     aux :: (c (Vinyl.PayloadType Vinyl.ElField a))
         => Vinyl.ElField a
         -> Vinyl.Const T.Text a
-    aux (Vinyl.Field x) = Vinyl.Const $ toText x
+    aux (Vinyl.Field x) = Vinyl.Const $ toTxt x
 
 
 -- | Given a record of functions to map each field to Text,
@@ -233,7 +229,7 @@ streamToList = Streamly.toList . Streamly.adapt
 liftFieldFormatter :: Vinyl.KnownField t
                    => (Vinyl.Snd t -> T.Text) -- ^ formatting function for the type in Field @t@
                    -> Vinyl.Lift (->) Vinyl.ElField (Vinyl.Const T.Text) t -- ^ formatting function in the form required to use in row-formatters.
-liftFieldFormatter toText = Vinyl.Lift $ Vinyl.Const . toText . Vinyl.getField
+liftFieldFormatter toTxt = Vinyl.Lift $ Vinyl.Const . toTxt . Vinyl.getField
 {-# INLINEABLE liftFieldFormatter #-}
 
 -- | lift a composed-field formatting function into the right form to append to a Rec of formatters
@@ -241,7 +237,7 @@ liftFieldFormatter toText = Vinyl.Lift $ Vinyl.Const . toText . Vinyl.getField
 liftFieldFormatter1 :: (Functor f, Vinyl.KnownField t)
                     => (f (Vinyl.Snd t) -> T.Text) -- ^ formatting function for things like @Maybe a@
                     -> Vinyl.Lift (->) (f Vinyl.:. Vinyl.ElField) (Vinyl.Const T.Text) t
-liftFieldFormatter1 toText = Vinyl.Lift $ Vinyl.Const . toText . fmap Vinyl.getField . Vinyl.getCompose
+liftFieldFormatter1 toTxt = Vinyl.Lift $ Vinyl.Const . toTxt . fmap Vinyl.getField . Vinyl.getCompose
 {-# INLINEABLE liftFieldFormatter1 #-}
 
 -- | Format a @Text@ field as-is.
@@ -513,12 +509,12 @@ streamTableEitherOpt
     -> t m T.Text -- ^ stream of 'Text' rows
     -> t m (Vinyl.Rec ((Either T.Text) Vinyl.:. Vinyl.ElField) rs)  -- ^ stream of parsed @Either :. ElField@ rows
 streamTableEitherOpt opts =
-    Streamly.map (doParse . Frames.tokenizeRow opts)
+    Streamly.map (parse . Frames.tokenizeRow opts)
     . handleHeader
   where
     handleHeader | isNothing (Frames.headerOverride opts) = Streamly.drop 1
                  | otherwise                       = id
-    doParse = Frames.readRec
+    parse = Frames.readRec
 {-# INLINEABLE streamTableEitherOpt #-}
 
 -- | Convert a stream of lines of `Text` to a table.
@@ -602,6 +598,7 @@ recStrictEitherToMaybe :: Vinyl.RMap rs => Vinyl.Rec (Strict.Either T.Text Vinyl
 recStrictEitherToMaybe = Vinyl.rmap (Strict.either (const (Vinyl.Compose Nothing)) (Vinyl.Compose . Just) . Vinyl.getCompose)
 --{-# INLINE recStrictEitherToMaybe #-}
 
+{-
 recEitherToStrict :: Vinyl.RMap rs => Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs -> Vinyl.Rec (Strict.Either T.Text Vinyl.:. Vinyl.ElField) rs
 recEitherToStrict = Vinyl.rmap (Vinyl.Compose . either Strict.Left Strict.Right . Vinyl.getCompose)
 --{-# INLINE recEitherToStrict #-}
@@ -609,7 +606,7 @@ recEitherToStrict = Vinyl.rmap (Vinyl.Compose . either Strict.Left Strict.Right 
 recUnStrictEither :: Vinyl.RMap rs => Vinyl.Rec (Strict.Either T.Text Vinyl.:. Vinyl.ElField) rs -> Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs
 recUnStrictEither = Vinyl.rmap (Vinyl.Compose . Strict.either Left Right . Vinyl.getCompose)
 --{-# INLINE recUnStrictEither #-}
-
+-}
 -- | Convert a stream of Word8 to lines of `Text` by decoding as UTF8 and splitting on "\n"
 word8ToTextLines :: (IsStream t, MonadIO m) => t m Word8 -> t m T.Text
 word8ToTextLines =  Streamly.splitOnSuffix(=='\n') (toText <$> Streamly.Fold.toList)
@@ -635,7 +632,7 @@ instance (Frames.Parseable t, StrictReadRec ts, KnownSymbol s) => StrictReadRec 
                            (V.Compose . Strict.Right . V.Field)
                            (Frames.parse' h)
                            V.:& strictReadRec t
-
+{-
 strictCons !a !b = a V.:& b
 
 strictMaybe :: b -> (a -> b) -> Maybe a -> b
@@ -643,9 +640,11 @@ strictMaybe !b f ma = case ma of
   Nothing -> b
   Just !a' -> f a'
 
---strictParseCons :: (KnownSymbol s, Frames.Parseable t)
+
+-- strictParseCons :: (KnownSymbol s, Frames.Parseable t)
 --                => Text -> V.Rec (Strict.Either Text V.:. V.ElField) rs -> V.Rec (Strict.Either Text V.:. V.ElField) (s Frames.:-> t ': rs)
 strictParseCons !h !rs = let !parsed = Frames.parse' h in parsed V.:& rs
+-}
 
 rtraverse
   :: Applicative h
