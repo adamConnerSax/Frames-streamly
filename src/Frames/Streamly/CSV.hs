@@ -34,8 +34,10 @@ specification of a format as well.  See the example for more details.
 -}
 module Frames.Streamly.CSV
     (
+      -- * Strict version of ReadRec
+      StrictReadRec (..)
       -- * read from File to Stream of Recs
-      readTable
+    , readTable
     , readTableOpt
     , readTableMaybe
     , readTableMaybeOpt

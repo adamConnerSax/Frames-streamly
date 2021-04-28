@@ -7,7 +7,7 @@ cabal-version: 2.2
 -- hash: f129113aa17f26529351746660f5b3ada35ea09fec7866ca91d25902f08ac8be
 
 name:           Frames-streamly
-version:        0.1.0.3
+version:        0.1.1.0
 synopsis:       A streamly layer for Frames I/O
 description:    More information is available in the <https://github.com/adamConnerSax/Frames-streamly/blob/master/Readme.md readme>.'
 category:       Data

@@ -1,3 +1,6 @@
+v0.1.1.0
+* Added ```StrictReadRec``` class
+
 v0.1.0.3
 * Bumped some upper bounds and raised the lower bound on relude
 
