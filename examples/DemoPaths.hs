@@ -1,6 +1,5 @@
 module DemoPaths where
 
-import qualified Frames.TH as Frames
 import qualified Paths_Frames_streamly as Paths
 
 forestFiresPath :: FilePath
