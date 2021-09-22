@@ -19,3 +19,4 @@ examples/html
 *.aux
 *.png
 exampleOut.csv
+.DS_Store

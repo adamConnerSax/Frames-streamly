@@ -1,7 +1,0 @@
-cradle:
-  cabal:
-    - path: "src"
-      component: "lib:Frames-streamly"
-
-    - path: "examples"
-      component: "Frames-streamly:test:Demo"
