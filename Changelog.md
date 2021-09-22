@@ -1,3 +1,6 @@
+v0.1.2.0
+* Made compatible with streamly-0.8.0
+
 v0.1.1.0
 * Added ```StrictReadRec``` class
 

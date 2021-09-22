@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -39,7 +40,10 @@ module Frames.Streamly.InCore
     )
 where
 
+#if MIN_VERSION_streamly(0,8,0)
+#else
 import qualified Streamly
+#endif
 import qualified Streamly.Prelude                       as Streamly
 import qualified Streamly.Data.Fold                     as Streamly.Fold
 import qualified Streamly.Internal.Data.Fold            as Streamly.Fold
@@ -55,6 +59,24 @@ import           Frames.InCore                           (VectorFor, VectorMFor,
 
 -- | Fold a stream of 'Vinyl' records into SoA (Structure-of-Arrays) form.
 -- Here as a 'streamly' fold, so it may be deployed along with other folds or on only part of a stream.
+#if MIN_VERSION_streamly(0,8,0)
+inCoreSoA_F :: forall m rs. (Prim.PrimMonad m, Frames.RecVec rs)
+          => Streamly.Fold.Fold m (Frames.Record rs) (Int, Vinyl.Rec (((->) Int) Frames.:. Frames.ElField) rs)
+inCoreSoA_F = Streamly.Fold.mkFoldM feed initial fin
+  where feed (!i, !sz, !mvs') row
+          | i == sz = Frames.growRec (Proxy::Proxy rs) mvs'
+                      >>= flip feed row . (i, sz*2,)
+          | otherwise = do Frames.writeRec (Proxy::Proxy rs) i mvs' row
+                           return $ Streamly.Fold.Partial (i+1, sz, mvs')
+
+        initial = do
+          mvs <- Frames.allocRec (Proxy :: Proxy rs) Frames.initialCapacity
+          return $ Streamly.Fold.Partial (0, Frames.initialCapacity, mvs)
+
+        fin (n, _, mvs') =
+          do vs <- Frames.freezeRec (Proxy::Proxy rs) n mvs'
+             return . (n,) $ Frames.produceRec (Proxy::Proxy rs) vs
+#else
 inCoreSoA_F :: forall m rs. (Prim.PrimMonad m, Frames.RecVec rs)
           => Streamly.Fold.Fold m (Frames.Record rs) (Int, Vinyl.Rec (((->) Int) Frames.:. Frames.ElField) rs)
 inCoreSoA_F = Streamly.Fold.mkFold feed initial fin
@@ -71,6 +93,7 @@ inCoreSoA_F = Streamly.Fold.mkFold feed initial fin
         fin (n, _, mvs') =
           do vs <- Frames.freezeRec (Proxy::Proxy rs) n mvs'
              return . (n,) $ Frames.produceRec (Proxy::Proxy rs) vs
+#endif
 {-# INLINE inCoreSoA_F #-}
 
 -- | Perform the 'inCoreSoA_F' fold on a stream of records.

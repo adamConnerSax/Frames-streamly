@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -37,15 +38,36 @@ where
 import qualified Frames.Streamly.InCore as FS
 import Prelude hiding (filter, mapMaybe)
 
+#if MIN_VERSION_streamly(0,8,0)
+import Streamly.Prelude                       (IsStream)
+#else
 import qualified Streamly                               as Streamly
-import qualified Streamly.Prelude                       as Streamly
 import           Streamly                                ( IsStream )
+#endif
+
+import qualified Streamly.Prelude                       as Streamly
 import qualified Control.Monad.Primitive                as Prim
 import Control.Monad.ST (runST)
-import qualified Frames                                 as Frames
+import qualified Frames
 import qualified Frames.InCore                          as Frames
 
+#if MIN_VERSION_streamly(0,8,0)
+fromSerial :: IsStream t => Streamly.SerialT m a -> t m a
+fromSerial = Streamly.fromSerial
+{-# INLINE fromSerial #-}
 
+fromAhead :: IsStream t => Streamly.AheadT m a -> t m a
+fromAhead = Streamly.fromAhead
+{-# INLINE fromAhead #-}
+#else
+fromSerial :: IsStream t => Streamly.SerialT m a -> t m a
+fromSerial = Streamly.serially
+{-# INLINE fromSerial #-}
+
+fromAhead :: IsStream t => Streamly.AheadT m a -> t m a
+fromAhead = Streamly.aheadly
+{-# INLINE fromAhead #-}
+#endif
 
 
 -- | Use streamly to transform a frame.
@@ -62,7 +84,7 @@ transform f = FS.inCoreAoS . f . Streamly.fromFoldable
 
 -- | Filter using streamly
 filter :: (Frames.RecVec as) => (Frames.Record as -> Bool) -> Frames.FrameRec as -> Frames.FrameRec as
-filter f frame = runST $ transform (Streamly.serially . Streamly.filter f) frame
+filter f frame = runST $ transform (fromSerial . Streamly.filter f) frame
 {-# INLINE filter #-}
 
 -- | map using speculative streams (concurrency that preserves ordering of results).
@@ -71,14 +93,14 @@ concurrentMapM :: (Prim.PrimMonad m
                   , Frames.RecVec as
                   , Frames.RecVec bs
                   ) => (Frames.Record as -> m (Frames.Record bs)) -> Frames.FrameRec as -> m (Frames.FrameRec bs)
-concurrentMapM f = transform (Streamly.aheadly . Streamly.mapM f)
+concurrentMapM f = transform (fromAhead . Streamly.mapM f)
 {-# INLINE concurrentMapM #-}
 
 -- | mapMaybe using streamly
 mapMaybe :: (Frames.RecVec as
                       , Frames.RecVec bs
                       ) => (Frames.Record as -> Maybe (Frames.Record bs)) -> Frames.FrameRec as -> Frames.FrameRec bs
-mapMaybe f frame = runST $ transform (Streamly.aheadly . Streamly.mapMaybe f) frame
+mapMaybe f frame = runST $ transform (fromAhead . Streamly.mapMaybe f) frame
 {-# INLINE mapMaybe #-}
 
 -- | mapMaybeM using speculative streams (concurrency that preserves ordering of results).
@@ -87,5 +109,5 @@ concurrentMapMaybeM :: (Prim.PrimMonad m
                        , Frames.RecVec as
                        , Frames.RecVec bs
                        ) => (Frames.Record as -> m (Maybe (Frames.Record bs))) -> Frames.FrameRec as -> m (Frames.FrameRec bs)
-concurrentMapMaybeM f = transform (Streamly.aheadly . Streamly.mapMaybeM f)
+concurrentMapMaybeM f = transform (fromAhead . Streamly.mapMaybeM f)
 {-# INLINE concurrentMapMaybeM #-}
