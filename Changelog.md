@@ -1,3 +1,6 @@
+v0.1.1.1
+* Removed Strictness/Memory testing cruft for release.
+
 v0.1.1.0
 * Added ```StrictReadRec``` class
 

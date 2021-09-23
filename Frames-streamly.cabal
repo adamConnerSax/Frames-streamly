@@ -1,13 +1,7 @@
 cabal-version: 2.2
 
--- This file has been generated from package.yaml by hpack version 0.31.2.
---
--- see: https://github.com/sol/hpack
---
--- hash: f129113aa17f26529351746660f5b3ada35ea09fec7866ca91d25902f08ac8be
-
 name:           Frames-streamly
-version:        0.1.1.1
+version:        0.1.2
 synopsis:       A streamly layer for Frames I/O
 description:    More information is available in the <https://github.com/adamConnerSax/Frames-streamly/blob/master/Readme.md readme>.'
 category:       Data
@@ -36,6 +30,7 @@ library
       Frames.Streamly.CSV
       Frames.Streamly.InCore
       Frames.Streamly.Transform
+      Frames.Streamly.TH
   autogen-modules:
      Paths_Frames_streamly
   hs-source-dirs:
@@ -45,10 +40,12 @@ library
       Frames >=0.6 && <0.8
     , base >=4.12.0 && <4.17
     , exceptions >=0.10.0 && <0.11
+    , ghc-prim >= 0.6 && < 0.8
     , primitive >=0.7 && <0.8
     , relude >=1.0.0 && < 1.1
     , streamly >=0.7 && <0.8
     , strict >= 0.4 && < 0.5
+    , template-haskell >= 2.14 && < 2.18
     , text >=1.2.3 && <1.3
     , vinyl >=0.12 && <0.14
   mixins:  base hiding (Prelude)

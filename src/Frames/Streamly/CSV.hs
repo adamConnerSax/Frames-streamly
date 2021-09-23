@@ -76,6 +76,7 @@ module Frames.Streamly.CSV
     -- * debugging
     , streamWord8
     , streamTextLines
+    , streamTokenized'
     , streamTokenized
     , streamParsed
     , streamParsedMaybe
@@ -680,6 +681,11 @@ streamWord8 =  Streamly.File.toBytes
 streamTextLines :: (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> t m Text
 streamTextLines = word8ToTextLines2 . streamWord8
 {-# INLINE streamTextLines #-}
+
+streamTokenized' :: (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> Text -> t m [Text]
+streamTokenized' fp sep =  Streamly.map (fmap T.copy . Frames.tokenizeRow popts) $ streamTextLines fp where
+  popts = Frames.defaultParser { Frames.columnSeparator = sep }
+{-# INLINE streamTokenized' #-}
 
 streamTokenized :: (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> t m [Text]
 streamTokenized =  Streamly.map (fmap T.copy . Frames.tokenizeRow Frames.defaultParser) . streamTextLines
