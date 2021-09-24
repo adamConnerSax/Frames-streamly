@@ -43,7 +43,7 @@ library
     , ghc-prim >= 0.6 && < 0.8
     , primitive >=0.7 && <0.8
     , relude >=1.0.0 && < 1.1
-    , streamly >=0.7 && <0.8
+    , streamly >=0.7.2 && <0.9
     , strict >= 0.4 && < 0.5
     , template-haskell >= 2.14 && < 2.18
     , text >=1.2.3 && <1.3

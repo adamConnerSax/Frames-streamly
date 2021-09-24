@@ -682,7 +682,7 @@ streamTextLines :: (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath ->
 streamTextLines = word8ToTextLines2 . streamWord8
 {-# INLINE streamTextLines #-}
 
-streamTokenized' :: (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> Text -> t m [Text]
+streamTokenized' :: (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> Frames.Separator -> t m [Text]
 streamTokenized' fp sep =  Streamly.map (fmap T.copy . Frames.tokenizeRow popts) $ streamTextLines fp where
   popts = Frames.defaultParser { Frames.columnSeparator = sep }
 {-# INLINE streamTokenized' #-}
