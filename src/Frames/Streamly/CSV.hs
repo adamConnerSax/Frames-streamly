@@ -3,6 +3,7 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DeriveLift #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -36,8 +37,12 @@ specification of a format as well.  See the example for more details.
 -}
 module Frames.Streamly.CSV
     (
+      -- * Parsing
+      ParserOptions(..)
+    , defaultParser
+    , useRowFilter
       -- * Strict version of ReadRec
-      StrictReadRec (..)
+    , StrictReadRec (..)
       -- * read from File to Stream of Recs
     , readTable
     , readTableOpt
@@ -112,7 +117,7 @@ import qualified Streamly.Internal.Data.Fold.Types as Streamly.Fold
 import qualified Streamly.Internal.FileSystem.File      as Streamly.File
 import qualified Streamly.Internal.Data.Unfold          as Streamly.Unfold
 import           Control.Monad.Catch                     ( MonadCatch )
-
+import Language.Haskell.TH.Syntax (Lift)
 import qualified Data.Strict.Either as Strict
 import qualified Data.Text                              as T
 
@@ -129,7 +134,20 @@ import qualified Data.Vinyl as V
 import qualified Data.Vinyl.Functor as V (Compose(..), (:.))
 import GHC.TypeLits (KnownSymbol)
 
+data ParserOptions = ParserOptions
+  {
+    headerOverride :: Maybe [Text]
+  , columnSeparator :: Frames.Separator
+  , quotingMode :: Frames.QuotingMode
+  , rowFilter :: Maybe [Bool]
+  } deriving Lift
 
+framesParserOptions :: ParserOptions -> Frames.ParserOptions
+framesParserOptions (ParserOptions ho cs qm _) = Frames.ParserOptions ho cs qm
+
+defaultParser :: ParserOptions
+defaultParser = ParserOptions (Frames.headerOverride x) (Frames.columnSeparator x) (Frames.quotingMode x) Nothing where
+  x = Frames.defaultParser
 
 -- | Given a stream of @Records@, for which all fields satisfy the `ShowCSV` constraint,
 -- produce a stream of `Text`, one item (line) per `Record` with the specified separator
@@ -422,7 +440,7 @@ readTableMaybe
     , Frames.ReadRec rs)
     => FilePath -- ^ file path
     -> t m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Maybe :. ElField@ records after parsing.
-readTableMaybe = readTableMaybeOpt Frames.defaultParser
+readTableMaybe = readTableMaybeOpt defaultParser
 {-# INLINEABLE readTableMaybe #-}
 
 -- | Stream a table from a file path.
@@ -435,7 +453,7 @@ readTableMaybeOpt
     , IsStream t
     , Vinyl.RMap rs
     , Frames.ReadRec rs)
-    => Frames.ParserOptions -- ^ parsing options
+    => ParserOptions -- ^ parsing options
     -> FilePath -- ^ file path
     -> t m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Maybe :. ElField@ records after parsing.
 readTableMaybeOpt opts = Streamly.map recEitherToMaybe . readTableEitherOpt opts
@@ -455,7 +473,7 @@ readTableEither
      , Frames.ReadRec rs)
   => FilePath -- ^ file path
   -> t m (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Either :. ElField@ records after parsing.
-readTableEither = readTableEitherOpt Frames.defaultParser
+readTableEither = readTableEitherOpt defaultParser
 
 -- | Stream a table from a file path.
 -- Results composed with the @Either Text@ functor. Unparsed fields are returned as a @Left@
@@ -468,7 +486,7 @@ readTableEitherOpt
      , IsStream t
      , Vinyl.RMap rs
      , Frames.ReadRec rs)
-  => Frames.ParserOptions -- ^ parsing options
+  => ParserOptions -- ^ parsing options
   -> FilePath -- ^ file path
   -> t m (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Either :. ElField@ records after parsing.
 readTableEitherOpt opts = streamTableEitherOpt opts . word8ToTextLines . Streamly.File.toBytes
@@ -487,7 +505,7 @@ readTable
      , StrictReadRec rs)
   => FilePath -- ^ file path
   -> t m (Frames.Record rs) -- ^ stream of Records
-readTable = readTableOpt Frames.defaultParser
+readTable = readTableOpt defaultParser
 {-# INLINEABLE readTable #-}
 
 -- | Stream Table from a file path, dropping rows where any field fails to parse
@@ -499,7 +517,7 @@ readTableOpt
      , IsStream t
      , Vinyl.RMap rs
      , StrictReadRec rs)
-  => Frames.ParserOptions  -- ^ parsing options
+  => ParserOptions  -- ^ parsing options
   -> FilePath -- ^ file path
   -> t m (Frames.Record rs)  -- ^ stream of Records
 readTableOpt !opts !fp = streamTableOpt opts $! word8ToTextLines $! Streamly.File.toBytes fp
@@ -518,7 +536,7 @@ streamTableEither
     , Frames.ReadRec rs)
     => t m T.Text -- ^ stream of 'Text' rows
     -> t m (Vinyl.Rec ((Either T.Text) Vinyl.:. Vinyl.ElField) rs) -- ^ stream of parsed @Either :. ElField@ rows
-streamTableEither = streamTableEitherOpt Frames.defaultParser
+streamTableEither = streamTableEitherOpt defaultParser
 {-# INLINEABLE streamTableEither #-}
 
 -- | Convert a stream of lines of `Text` to records.
@@ -532,14 +550,14 @@ streamTableEitherOpt
     , IsStream t
     , Vinyl.RMap rs
     , Frames.ReadRec rs)
-    => Frames.ParserOptions -- ^ parsing options
+    => ParserOptions -- ^ parsing options
     -> t m T.Text -- ^ stream of 'Text' rows
     -> t m (Vinyl.Rec ((Either T.Text) Vinyl.:. Vinyl.ElField) rs)  -- ^ stream of parsed @Either :. ElField@ rows
 streamTableEitherOpt opts =
-    Streamly.map (parse . Frames.tokenizeRow opts)
+    Streamly.map (parse . useRowFilter (rowFilter opts) . Frames.tokenizeRow (framesParserOptions opts))
     . handleHeader
   where
-    handleHeader | isNothing (Frames.headerOverride opts) = Streamly.drop 1
+    handleHeader | isNothing (headerOverride opts) = Streamly.drop 1
                  | otherwise                       = id
     parse = Frames.readRec
 {-# INLINEABLE streamTableEitherOpt #-}
@@ -555,7 +573,7 @@ streamTableMaybe
     , Frames.ReadRec rs)
     => t m T.Text -- ^ stream of 'Text' rows
     -> t m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of parsed @Maybe :. ElField@ rows
-streamTableMaybe = streamTableMaybeOpt Frames.defaultParser
+streamTableMaybe = streamTableMaybeOpt defaultParser
 {-# INLINEABLE streamTableMaybe #-}
 
 -- | Convert a stream of lines of Text to a table .
@@ -567,7 +585,7 @@ streamTableMaybeOpt
     , IsStream t
     , Vinyl.RMap rs
     , Frames.ReadRec rs)
-    => Frames.ParserOptions -- ^ parsing options
+    => ParserOptions -- ^ parsing options
     -> t m T.Text -- ^ stream of 'Text' rows
     -> t m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of parsed @Maybe :. ElField@ rows
 streamTableMaybeOpt opts = Streamly.map recEitherToMaybe . streamTableEitherOpt opts
@@ -586,7 +604,7 @@ streamTable
     )
     => t m T.Text -- ^ stream of 'Text' rows
     -> t m (Frames.Record rs) -- ^ stream of Records
-streamTable = streamTableOpt Frames.defaultParser
+streamTable = streamTableOpt defaultParser
 {-# INLINEABLE streamTable #-}
 
 -- | Convert a stream of lines of 'Text' `Word8` to a table,
@@ -599,12 +617,12 @@ streamTableOpt
     , Vinyl.RMap rs
     , StrictReadRec rs
     )
-    => Frames.ParserOptions -- ^ parsing options
+    => ParserOptions -- ^ parsing options
     -> t m T.Text  -- ^ stream of 'Text' rows
     -> t m (Frames.Record rs) -- ^ stream of Records
 streamTableOpt opts = Streamly.mapMaybe (mRec opts) . handleHeader
   where
-    handleHeader | isNothing (Frames.headerOverride opts) = Streamly.drop 1
+    handleHeader | isNothing (headerOverride opts) = Streamly.drop 1
                  | otherwise                       = id
 
 --    doParse = recStrictEitherToMaybe . recEitherToStrict . Frames.readRec
@@ -613,8 +631,8 @@ streamTableOpt opts = Streamly.mapMaybe (mRec opts) . handleHeader
 doParse :: (V.RMap rs, StrictReadRec rs) => [Text] -> V.Rec (Maybe V.:. V.ElField) rs
 doParse !x = recStrictEitherToMaybe $! strictReadRec x
 
-mRec :: (V.RMap rs, StrictReadRec rs) => Frames.ParserOptions -> Text -> Maybe (V.Rec V.ElField rs)
-mRec !opts !x = recMaybe $! doParse $! Frames.tokenizeRow opts x
+mRec :: (V.RMap rs, StrictReadRec rs) => ParserOptions -> Text -> Maybe (V.Rec V.ElField rs)
+mRec !opts !x = recMaybe $! doParse $! useRowFilter (rowFilter opts) $! Frames.tokenizeRow (framesParserOptions opts) x
 
 
 recEitherToMaybe :: Vinyl.RMap rs => Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs -> Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs
@@ -638,13 +656,13 @@ recUnStrictEither = Vinyl.rmap (Vinyl.Compose . Strict.either Left Right . Vinyl
 word8ToTextLines :: (IsStream t, MonadIO m) => t m Word8 -> t m T.Text
 word8ToTextLines =  Streamly.splitOnSuffix(=='\n') (toText <$> Streamly.Fold.toList)
                     . Streamly.Unicode.decodeUtf8
---{-# INLINE word8ToTextLines #-}
+{-# INLINE word8ToTextLines #-}
 
 word8ToTextLines2 :: (IsStream t, MonadIO m) => t m Word8 -> t m T.Text
 word8ToTextLines2 =  Streamly.map (toText . Streamly.Array.toList)
                      . Streamly.Unicode.Array.lines
                      . Streamly.Unicode.decodeUtf8
---{-# INLINE word8ToTextLines2 #-}
+{-# INLINE word8ToTextLines2 #-}
 
 class StrictReadRec rs where
   strictReadRec :: [Text] -> V.Rec (Strict.Either Text V.:. V.ElField) rs
@@ -687,12 +705,20 @@ recMaybe  = rtraverse V.getCompose
 --{-# INLINEABLE recMaybe #-}
 
 -- TH Support
+useRowFilter :: Maybe [Bool] -> [Text] -> [Text]
+useRowFilter mb = maybe id f mb where
+  f bs xs = snd <$> (filter fst $ zip bs xs)
+
 type StreamState t m a = StateT (t m a) m
+
+rowFilterStreamState :: (Streamly.IsStream t, Monad m) => Maybe [Bool] -> StreamState t m [Text] ()
+rowFilterStreamState rf = modify (Streamly.map $ useRowFilter rf)
 
 draw :: Monad m => StreamState Streamly.SerialT m a (Maybe a)
 draw = do
   s <- get
   ma <- lift $ Streamly.head s
+  modify $ Streamly.drop 1
   return ma
 
 foldAll :: Monad m
@@ -711,29 +737,43 @@ foldAll step start extract = do
 prefixInference :: (Frames.ColumnTypeable a
                    , Monoid a
                    , Monad m)
-                =>  StreamState Streamly.SerialT m [T.Text] [a]
-prefixInference = draw >>= \case
-  Nothing -> return []
-  Just row1 -> foldAll
-               (\ts -> zipWith (<>) ts . inferCols)
-               (inferCols row1)
-               id
-  where inferCols = map Frames.inferType
+                =>  Maybe [Bool]
+                -> StreamState Streamly.SerialT m [T.Text] [a]
+prefixInference rF = do
+  let inferCols = map Frames.inferType
+  rowFilterStreamState rF
+
+  draw >>= \case
+    Nothing -> return []
+    Just row1 -> foldAll
+                 (\ts -> zipWith (<>) ts . inferCols)
+                 (inferCols row1)
+                 id
 {-# INLINEABLE prefixInference #-}
 
 readColHeaders :: (Frames.ColumnTypeable a
                   , Monoid a
                   , Monad m)
-               => Frames.ParserOptions
+               => Maybe [Text] -- headerOverride
+               -> Maybe (Text -> Bool) --headerFilter
                -> Streamly.SerialT m [Text]
-               -> m [(Text, a)]
-readColHeaders opts = evalStateT $
-  do headerRow <- maybe (fromMaybe err <$> draw)
-                        pure
-                        (Frames.headerOverride opts)
-     colTypes <- prefixInference
-     unless (length headerRow == length colTypes) (error errNumColumns)
-     return (zip headerRow colTypes)
+               -> m ([(Text, a)], Maybe [Bool])
+readColHeaders hOverride hFilter = evalStateT $ do
+  (headerRow, rF) <- case hFilter of
+    Nothing -> do
+      hRow <- maybe (fromMaybe err <$> draw)
+                     pure
+                     hOverride
+      return (hRow, Nothing)
+    Just ff -> do
+      allHeaders <- fromMaybe err <$> draw
+      let rF = Just $ fmap ff allHeaders
+          cNames = fromMaybe (useRowFilter rF allHeaders) hOverride
+      return (cNames, rF)
+
+  colTypes <- prefixInference rF
+  unless (length headerRow == length colTypes) (error errNumColumns)
+  return (zip headerRow colTypes, rF)
   where err = error "Empty Producer has no header row"
         errNumColumns =
           unlines
@@ -746,7 +786,6 @@ readColHeaders opts = evalStateT $
           , "  consider using the Frames-dsv package in conjunction with"
           , "  Frames to make use of a different CSV parser."]
 {-# INLINEABLE readColHeaders #-}
-
 
 streamWord8 :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m Word8
 streamWord8 =  Streamly.File.toBytes

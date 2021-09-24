@@ -17,6 +17,7 @@
 module Frames.Streamly.TH where
 
 import qualified Frames.Streamly.CSV as SCSV
+import Frames.Streamly.CSV (ParserOptions(..))
 
 import Prelude hiding (Type, lift)
 import Data.Char (toLower)
@@ -26,7 +27,7 @@ import Data.Vinyl.TypeLevel (RIndex)
 import Frames.Col ((:->))
 import Frames.ColumnTypeable
 import Frames.ColumnUniverse
-import Frames.CSV
+import Frames.CSV hiding (ParserOptions(..))
 import Frames.Rec(Record)
 import Frames.Utils
 import qualified GHC.Types as GHC
@@ -139,6 +140,7 @@ data RowGen (a :: [GHC.Type]) =
          , separator      :: Separator
            -- ^ The string that separates the columns on a
            -- row.
+         , headerFilter :: Maybe (Text -> Bool)
          , rowTypeName    :: String
            -- ^ The row type that enumerates all
            -- columns.
@@ -165,12 +167,12 @@ data RowGen (a :: [GHC.Type]) =
 -- separator (a comma), infer column types from the default 'Columns'
 -- set of types, and produce a row type with name @Row@.
 rowGen :: FilePath -> RowGen CommonColumns
-rowGen = RowGen [] "" defaultSep "Row" Proxy 1000 . SCSV.streamTokenized'
+rowGen = RowGen [] "" defaultSep Nothing "Row" Proxy 1000 . SCSV.streamTokenized'
 
 -- | Like 'rowGen', but will also generate custom data types for
 -- 'Categorical' variables with up to 8 distinct variants.
 rowGenCat :: FilePath -> RowGen CommonColumnsCat
-rowGenCat = RowGen [] "" defaultSep "Row" Proxy 1000 . SCSV.streamTokenized'
+rowGenCat = RowGen [] "" defaultSep Nothing "Row" Proxy 1000 . SCSV.streamTokenized'
 
 -- -- | Generate a type for each row of a table. This will be something
 -- -- like @Record ["x" :-> a, "y" :-> b, "z" :-> c]@.
@@ -205,34 +207,45 @@ prefixSize = 1000
 --         opts = ParserOptions colNames' separator (RFC4180Quoting '\"')
 --         lineSource = lineReader separator >-> P.take prefixSize
 
--- | Tokenize the first line of a ’P.Producer’.
+-- | Tokenize the first line of a ’Streamly.SerialT’.
 colNamesP :: Monad m => Streamly.SerialT m [T.Text] -> m [T.Text]
 colNamesP src = fromMaybe [] <$> Streamly.head src
+
+--mkRowFilter :: (Text -> Bool) -> [Bool]
+--mkRowFilter hs = fmap (\f -> fmap f hs)
 
 -- | Generate a type for a row of a table all of whose columns remain
 -- unparsed 'Text' values.
 tableTypesText' :: forall a c.
                    (c ~ CoRec ColInfo a, ColumnTypeable c, Monoid c)
                 => RowGen a -> DecsQ
-tableTypesText' RowGen {..} =
-  do colNames <- runIO $
-                 maybe (colNamesP (lineReader separator))
-                       pure
-                       (headerOverride opts)
-     let headers = zip colNames (repeat (ConT ''T.Text))
-     (colTypes, colDecs) <- second concat . unzip
-                            <$> mapM (uncurry mkColDecs) headers
-     let recTy = TySynD (mkName rowTypeName) [] (recDec colTypes)
-         optsName = case rowTypeName of
-                      [] -> error "Row type name shouldn't be empty"
-                      h:t -> mkName $ toLower h : t ++ "Parser"
-     optsTy <- sigD optsName [t|ParserOptions|]
-     optsDec <- valD (varP optsName) (normalB $ lift opts) []
+tableTypesText' RowGen {..} = do
+  (colNames, rF) <- runIO $ case headerFilter of
+    Nothing -> do
+      cNames <-  maybe (colNamesP (lineReader separator))
+                 pure
+                 colNames'
+      return (cNames, Nothing)
+    Just ff -> do
+      allHeaders <- colNamesP (lineReader separator)
+      let rF = Just $ fmap ff allHeaders
+          cNames = fromMaybe (SCSV.useRowFilter rF allHeaders) colNames'
+      return (cNames, rF)
 
-     return (recTy : optsTy : optsDec : colDecs)
+  let opts = ParserOptions colNames' separator (RFC4180Quoting '\"') rF
+  let headers = zip colNames (repeat (ConT ''T.Text))
+  (colTypes, colDecs) <- second concat . unzip
+                         <$> mapM (uncurry mkColDecs) headers
+  let recTy = TySynD (mkName rowTypeName) [] (recDec colTypes)
+      optsName = case rowTypeName of
+                   [] -> error "Row type name shouldn't be empty"
+                   h:t -> mkName $ toLower h : t ++ "Parser"
+  optsTy <- sigD optsName [t|ParserOptions|]
+  optsDec <- valD (varP optsName) (normalB $ lift opts) []
+
+  return (recTy : optsTy : optsDec : colDecs)
   where colNames' | null columnNames = Nothing
                   | otherwise = Just (map T.pack columnNames)
-        opts = ParserOptions colNames' separator (RFC4180Quoting '\"')
         mkColDecs colNm colTy = do
           let safeName = T.unpack (sanitizeTypeName colNm)
           mColNm <- lookupTypeName (tablePrefix ++ safeName)
@@ -248,24 +261,24 @@ tableTypesText' RowGen {..} =
 -- rlens \@Foo@, and @foo' = rlens' \@Foo@.
 tableTypes' :: forall a c. (c ~ CoRec ColInfo a, ColumnTypeable c, Monoid c)
             => RowGen a -> DecsQ
-tableTypes' (RowGen {..}) =
-  do headers <- runIO
-                $ SCSV.readColHeaders opts lineSource :: Q [(T.Text, c)]
-     (colTypes, colDecs) <- (second concat . unzip)
-                            <$> mapM (uncurry mkColDecs)
-                                     (map (second colType) headers)
-     let recTy = TySynD (mkName rowTypeName) [] (recDec colTypes)
-         optsName = case rowTypeName of
-                      [] -> error "Row type name shouldn't be empty"
-                      h:t -> mkName $ toLower h : t ++ "Parser"
-     optsTy <- sigD optsName [t|ParserOptions|]
-     optsDec <- valD (varP optsName) (normalB $ lift opts) []
-     return (recTy : optsTy : optsDec : colDecs)
+tableTypes' (RowGen {..}) = do
+  (headers, rF) <- runIO
+                   $ SCSV.readColHeaders colNames' headerFilter lineSource :: Q ([(T.Text, c)], Maybe [Bool])
+  (colTypes, colDecs) <- (second concat . unzip)
+                         <$> mapM (uncurry mkColDecs)
+                         (map (second colType) headers)
+  let recTy = TySynD (mkName rowTypeName) [] (recDec colTypes)
+      opts = ParserOptions colNames' separator (RFC4180Quoting '\"') rF
+      optsName = case rowTypeName of
+                   [] -> error "Row type name shouldn't be empty"
+                   h:t -> mkName $ toLower h : t ++ "Parser"
+  optsTy <- sigD optsName [t|ParserOptions|]
+  optsDec <- valD (varP optsName) (normalB $ lift opts) []
+  return (recTy : optsTy : optsDec : colDecs)
      -- (:) <$> (tySynD (mkName n) [] (recDec' headers))
      --     <*> (concat <$> mapM (uncurry $ colDec (T.pack prefix)) headers)
   where colNames' | null columnNames = Nothing
                   | otherwise = Just (map T.pack columnNames)
-        opts = ParserOptions colNames' separator (RFC4180Quoting '\"')
         lineSource :: Streamly.SerialT IO [Text]
         lineSource = Streamly.take inferencePrefix $ lineReader separator --P.>-> P.take inferencePrefix
         mkColDecs :: T.Text -> Either (String -> Q [Dec]) Type -> Q (Type, [Dec])

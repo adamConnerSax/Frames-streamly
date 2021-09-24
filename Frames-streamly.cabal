@@ -66,6 +66,7 @@ test-suite Demo
       Frames
     , Frames-streamly
     , base
+    , foldl
     , streamly
     , text
     , vinyl
