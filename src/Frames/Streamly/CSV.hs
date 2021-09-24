@@ -7,6 +7,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PolyKinds #-}
@@ -74,11 +75,14 @@ module Frames.Streamly.CSV
     , writeLines
     , writeLines'
     , word8ToTextLines
+    -- * TH Support
+    , streamTokenized'
+    , streamTokenized
+    , readColHeaders
     -- * debugging
     , streamWord8
     , streamTextLines
-    , streamTokenized'
-    , streamTokenized
+
     , streamParsed
     , streamParsedMaybe
     )
@@ -95,12 +99,14 @@ import Streamly.Prelude                       (IsStream)
 import qualified Streamly.Internal.Unicode.Array.Char as Streamly.Unicode.Array
 import qualified Streamly.Data.Array.Foreign as Streamly.Array
 import qualified Streamly.Unicode.Stream           as Streamly.Unicode
+import qualified Streamly.Internal.Data.Fold.Type as Streamly.Fold
 #else
 import qualified Streamly                               as Streamly
 import           Streamly                                ( IsStream )
 import qualified Streamly.Internal.Memory.Unicode.Array as Streamly.Unicode.Array
 import qualified Streamly.Internal.Memory.Array.Types as Streamly.Array
 import qualified Streamly.Data.Unicode.Stream           as Streamly.Unicode
+import qualified Streamly.Internal.Data.Fold.Types as Streamly.Fold
 #endif
 
 import qualified Streamly.Internal.FileSystem.File      as Streamly.File
@@ -348,6 +354,7 @@ writeCSV fp = writeSV "," fp
 {-# INLINEABLE writeCSV #-}
 
 -- NB: Uses some internal modules from Streamly.  Will have to change when they become stable
+
 -- | write a stream of @Records@ to a file, one line per @Record@.
 -- Use the 'Show' class to format each field to @Text@
 writeStreamSV_Show
@@ -678,19 +685,69 @@ rtraverse f (x V.:& xs) = (V.:&) <$> (f x)  <*> rtraverse f xs
 recMaybe :: V.Rec (Maybe V.:. V.ElField) cs -> Maybe (V.Rec V.ElField cs)
 recMaybe  = rtraverse V.getCompose
 --{-# INLINEABLE recMaybe #-}
--- tracing fold
-{-
-runningCountF :: MonadIO m => T.Text -> (Int -> T.Text) -> T.Text -> Streamly.Fold.Fold m a ()
-runningCountF startMsg countMsg endMsg = Streamly.Fold.Fold step start done where
-  start = liftIO (T.putStr startMsg) >> return 0
-  step !n _ = liftIO $ do
-    t <- System.Clock.getTime System.Clock.ProcessCPUTime
-    putStr $ show t ++ ": "
-    T.putStrLn $ countMsg n
-    return (n+1)
-  done _ = liftIO $ T.putStrLn endMsg
--}
--- For debugging
+
+-- TH Support
+type StreamState t m a = StateT (t m a) m
+
+draw :: Monad m => StreamState Streamly.SerialT m a (Maybe a)
+draw = do
+  s <- get
+  ma <- lift $ Streamly.head s
+  return ma
+
+foldAll :: Monad m
+        => (x -> a -> x) -> x -> (x -> b) -> StreamState Streamly.SerialT m a b
+foldAll step start extract = do
+#if MIN_VERSION_streamly(0,8,0)
+  let step' x a = Streamly.Fold.Partial $ step x a
+      start' = Streamly.Fold.Partial start
+      fld = Streamly.Fold.mkFold step' start' extract
+#else
+  let fld = Streamly.Fold.mkPure step start extract
+#endif
+  s <- get
+  lift $ Streamly.fold fld s
+
+prefixInference :: (Frames.ColumnTypeable a
+                   , Monoid a
+                   , Monad m)
+                =>  StreamState Streamly.SerialT m [T.Text] [a]
+prefixInference = draw >>= \case
+  Nothing -> return []
+  Just row1 -> foldAll
+               (\ts -> zipWith (<>) ts . inferCols)
+               (inferCols row1)
+               id
+  where inferCols = map Frames.inferType
+{-# INLINEABLE prefixInference #-}
+
+readColHeaders :: (Frames.ColumnTypeable a
+                  , Monoid a
+                  , Monad m)
+               => Frames.ParserOptions
+               -> Streamly.SerialT m [Text]
+               -> m [(Text, a)]
+readColHeaders opts = evalStateT $
+  do headerRow <- maybe (fromMaybe err <$> draw)
+                        pure
+                        (Frames.headerOverride opts)
+     colTypes <- prefixInference
+     unless (length headerRow == length colTypes) (error errNumColumns)
+     return (zip headerRow colTypes)
+  where err = error "Empty Producer has no header row"
+        errNumColumns =
+          unlines
+          [ ""
+          , "Error parsing CSV: "
+          , "  Number of columns in header differs from number of columns"
+          , "  found in the remaining file. This may be due to newlines"
+          , "  being present within the data itself (not just separating"
+          , "  rows). If support for embedded newlines is required, "
+          , "  consider using the Frames-dsv package in conjunction with"
+          , "  Frames to make use of a different CSV parser."]
+{-# INLINEABLE readColHeaders #-}
+
+
 streamWord8 :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m Word8
 streamWord8 =  Streamly.File.toBytes
 {-# INLINE streamWord8 #-}

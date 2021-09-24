@@ -1,7 +1,16 @@
-{-# LANGUAGE CPP, DataKinds, GADTs, KindSignatures, OverloadedStrings,
-             QuasiQuotes, RecordWildCards, RoleAnnotations,
-             ScopedTypeVariables, TemplateHaskell, TupleSections,
-             TypeApplications, TypeOperators #-}
+{-# LANGUAGE CPP #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE GADTs #-}
+{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RoleAnnotations #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
 -- | Code generation of types relevant to Frames use-cases. Generation
 -- may be driven by an automated inference process or manual use of
 -- the individual helpers.
@@ -10,10 +19,7 @@ module Frames.Streamly.TH where
 import qualified Frames.Streamly.CSV as SCSV
 
 import Prelude hiding (Type, lift)
---import Control.Arrow (second)
 import Data.Char (toLower)
-import Data.Maybe (fromMaybe)
-import Data.Proxy (Proxy(..))
 import qualified Data.Text as T
 import Data.Vinyl
 import Data.Vinyl.TypeLevel (RIndex)
@@ -200,7 +206,7 @@ prefixSize = 1000
 --         lineSource = lineReader separator >-> P.take prefixSize
 
 -- | Tokenize the first line of a ’P.Producer’.
-colNamesP :: (Monad m, Streamly.IsStream t) => t m [T.Text] -> m [T.Text]
+colNamesP :: Monad m => Streamly.SerialT m [T.Text] -> m [T.Text]
 colNamesP src = fromMaybe [] <$> Streamly.head src
 
 -- | Generate a type for a row of a table all of whose columns remain
@@ -244,7 +250,7 @@ tableTypes' :: forall a c. (c ~ CoRec ColInfo a, ColumnTypeable c, Monoid c)
             => RowGen a -> DecsQ
 tableTypes' (RowGen {..}) =
   do headers <- runIO
-                $ readColHeaders opts lineSource :: Q [(T.Text, c)]
+                $ SCSV.readColHeaders opts lineSource :: Q [(T.Text, c)]
      (colTypes, colDecs) <- (second concat . unzip)
                             <$> mapM (uncurry mkColDecs)
                                      (map (second colType) headers)
