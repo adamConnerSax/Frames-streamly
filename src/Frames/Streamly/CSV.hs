@@ -1,6 +1,7 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ConstraintKinds #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -85,12 +86,23 @@ where
 
 import Prelude hiding(getCompose)
 import qualified Streamly.Prelude                       as Streamly
+
+--import qualified Streamly                               as Streamly
+--import           Streamly                                ( IsStream )
+import qualified Streamly.Data.Fold                     as Streamly.Fold
+#if MIN_VERSION_streamly(0,8,0)
+import Streamly.Prelude                       (IsStream)
+import qualified Streamly.Internal.Unicode.Array.Char as Streamly.Unicode.Array
+import qualified Streamly.Data.Array.Foreign as Streamly.Array
+import qualified Streamly.Unicode.Stream           as Streamly.Unicode
+#else
 import qualified Streamly                               as Streamly
 import           Streamly                                ( IsStream )
-import qualified Streamly.Data.Fold                     as Streamly.Fold
-import qualified Streamly.Data.Unicode.Stream           as Streamly.Unicode
 import qualified Streamly.Internal.Memory.Unicode.Array as Streamly.Unicode.Array
 import qualified Streamly.Internal.Memory.Array.Types as Streamly.Array
+import qualified Streamly.Data.Unicode.Stream           as Streamly.Unicode
+#endif
+
 import qualified Streamly.Internal.FileSystem.File      as Streamly.File
 import qualified Streamly.Internal.Data.Unfold          as Streamly.Unfold
 import           Control.Monad.Catch                     ( MonadCatch )
@@ -262,10 +274,15 @@ formatWithShowCSV = liftFieldFormatter Frames.showCSV
 -- | write a stream of @Text@ to a file, one line per stream item.
 writeLines' :: (Streamly.MonadAsync m, MonadCatch m, Streamly.IsStream t) => FilePath -> t m T.Text -> m ()
 writeLines' fp s = do
+#if MIN_VERSION_streamly(0,8,0)
+  let unfoldMany = Streamly.unfoldMany
+#else
+  let unfoldMany = Streamly.concatUnfold
+#endif
   Streamly.fold (Streamly.File.write fp)
     $ Streamly.Unicode.encodeUtf8
     $ Streamly.adapt
-    $ Streamly.concatUnfold Streamly.Unfold.fromList
+    $ unfoldMany Streamly.Unfold.fromList
     $ Streamly.map T.unpack
     $ Streamly.intersperse "\n" s
 {-# INLINEABLE writeLines' #-}
@@ -674,27 +691,27 @@ runningCountF startMsg countMsg endMsg = Streamly.Fold.Fold step start done wher
   done _ = liftIO $ T.putStrLn endMsg
 -}
 -- For debugging
-streamWord8 :: (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> t m Word8
+streamWord8 :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m Word8
 streamWord8 =  Streamly.File.toBytes
 {-# INLINE streamWord8 #-}
 
-streamTextLines :: (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> t m Text
+streamTextLines :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m Text
 streamTextLines = word8ToTextLines2 . streamWord8
 {-# INLINE streamTextLines #-}
 
-streamTokenized' :: (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> Frames.Separator -> t m [Text]
+streamTokenized' :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> Frames.Separator -> t m [Text]
 streamTokenized' fp sep =  Streamly.map (fmap T.copy . Frames.tokenizeRow popts) $ streamTextLines fp where
   popts = Frames.defaultParser { Frames.columnSeparator = sep }
 {-# INLINE streamTokenized' #-}
 
-streamTokenized :: (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> t m [Text]
+streamTokenized :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m [Text]
 streamTokenized =  Streamly.map (fmap T.copy . Frames.tokenizeRow Frames.defaultParser) . streamTextLines
 {-# INLINE streamTokenized #-}
 
-streamParsed :: (V.RMap rs, StrictReadRec rs) => (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> t m (V.Rec (Strict.Either Text V.:. V.ElField) rs)
+streamParsed :: (V.RMap rs, StrictReadRec rs) => (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m (V.Rec (Strict.Either Text V.:. V.ElField) rs)
 streamParsed =  Streamly.map (strictReadRec . Frames.tokenizeRow Frames.defaultParser) . streamTextLines
 {-# INLINE streamParsed #-}
 
-streamParsedMaybe :: (V.RMap rs, StrictReadRec rs) => (Streamly.IsStream t, MonadIO m, MonadCatch m) => FilePath -> t m (V.Rec (Maybe V.:. V.ElField) rs)
+streamParsedMaybe :: (V.RMap rs, StrictReadRec rs) => (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m (V.Rec (Maybe V.:. V.ElField) rs)
 streamParsedMaybe =  Streamly.map (recStrictEitherToMaybe . strictReadRec . Frames.tokenizeRow Frames.defaultParser) . streamTextLines
 {-# INLINE streamParsedMaybe #-}
