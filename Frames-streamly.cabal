@@ -31,6 +31,7 @@ library
       Frames.Streamly.InCore
       Frames.Streamly.Transform
       Frames.Streamly.TH
+  other-modules: Frames.Streamly.Internal.CSV
   autogen-modules:
      Paths_Frames_streamly
   hs-source-dirs:
@@ -39,6 +40,7 @@ library
   build-depends:
       Frames >=0.6 && <0.8
     , base >=4.12.0 && <4.17
+    , containers >= 0.6.0 && < 0.7
     , exceptions >=0.10.0 && <0.11
     , ghc-prim >= 0.6 && < 0.8
     , primitive >=0.7 && <0.8
@@ -66,6 +68,7 @@ test-suite Demo
       Frames
     , Frames-streamly
     , base
+    , containers
     , foldl
     , streamly
     , text

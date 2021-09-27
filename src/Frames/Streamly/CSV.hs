@@ -14,6 +14,7 @@
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE StrictData #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
@@ -93,6 +94,8 @@ module Frames.Streamly.CSV
     )
 where
 
+import qualified Frames.Streamly.Internal.CSV as ICSV
+
 import Prelude hiding(getCompose)
 import qualified Streamly.Prelude                       as Streamly
 
@@ -116,8 +119,12 @@ import qualified Streamly.Internal.Data.Fold.Types as Streamly.Fold
 
 import qualified Streamly.Internal.FileSystem.File      as Streamly.File
 import qualified Streamly.Internal.Data.Unfold          as Streamly.Unfold
-import           Control.Monad.Catch                     ( MonadCatch )
+import           Control.Monad.Catch                     ( MonadThrow(..),MonadCatch )
+
 import Language.Haskell.TH.Syntax (Lift)
+import qualified Data.Map as Map
+import qualified Data.Set as Set
+
 import qualified Data.Strict.Either as Strict
 import qualified Data.Text                              as T
 
@@ -134,19 +141,27 @@ import qualified Data.Vinyl as V
 import qualified Data.Vinyl.Functor as V (Compose(..), (:.))
 import GHC.TypeLits (KnownSymbol)
 
+data FramesCSVException =
+  EmptyStreamException
+  | MissingHeadersException [Text]
+  | BadHeaderException Text deriving Show
+
+instance Exception FramesCSVException
+
 data ParserOptions = ParserOptions
   {
-    headerOverride :: Maybe [Text]
+    columnHandler :: ICSV.ParseColumnHandler
   , columnSeparator :: Frames.Separator
   , quotingMode :: Frames.QuotingMode
-  , rowFilter :: Maybe [Bool]
+--  , includedHeaders :: Maybe HeaderList
   } deriving Lift
 
-framesParserOptions :: ParserOptions -> Frames.ParserOptions
-framesParserOptions (ParserOptions ho cs qm _) = Frames.ParserOptions ho cs qm
+
+framesParserOptionsForTokenizing :: ParserOptions -> Frames.ParserOptions
+framesParserOptionsForTokenizing (ParserOptions _ cs qm) = Frames.ParserOptions Nothing cs qm
 
 defaultParser :: ParserOptions
-defaultParser = ParserOptions (Frames.headerOverride x) (Frames.columnSeparator x) (Frames.quotingMode x) Nothing where
+defaultParser = ParserOptions (ICSV.ParseAll True) (Frames.columnSeparator x) (Frames.quotingMode x) where
   x = Frames.defaultParser
 
 -- | Given a stream of @Records@, for which all fields satisfy the `ShowCSV` constraint,
@@ -436,6 +451,7 @@ readTableMaybe
     (Streamly.MonadAsync m
     , MonadCatch m
     , IsStream t
+    , Monad (t m)
     , Vinyl.RMap rs
     , Frames.ReadRec rs)
     => FilePath -- ^ file path
@@ -451,6 +467,7 @@ readTableMaybeOpt
     (Streamly.MonadAsync m
     , MonadCatch m
     , IsStream t
+    , Monad (t m)
     , Vinyl.RMap rs
     , Frames.ReadRec rs)
     => ParserOptions -- ^ parsing options
@@ -469,6 +486,7 @@ readTableEither
      (Streamly.MonadAsync m
      , MonadCatch m
      , IsStream t
+     , Monad (t m)
      , Vinyl.RMap rs
      , Frames.ReadRec rs)
   => FilePath -- ^ file path
@@ -484,6 +502,7 @@ readTableEitherOpt
      (Streamly.MonadAsync m
      , MonadCatch m
      , IsStream t
+     , Monad (t m)
      , Vinyl.RMap rs
      , Frames.ReadRec rs)
   => ParserOptions -- ^ parsing options
@@ -501,6 +520,7 @@ readTable
      (Streamly.MonadAsync m
      , MonadCatch m
      , IsStream t
+     , Monad (t m)
      , Vinyl.RMap rs
      , StrictReadRec rs)
   => FilePath -- ^ file path
@@ -515,6 +535,7 @@ readTableOpt
      (Streamly.MonadAsync m
      , MonadCatch m
      , IsStream t
+     , Monad (t m)
      , Vinyl.RMap rs
      , StrictReadRec rs)
   => ParserOptions  -- ^ parsing options
@@ -532,9 +553,10 @@ streamTableEither
     :: forall rs t m.
     (Streamly.MonadAsync m
     , IsStream t
+    , Monad (t m)
     , Vinyl.RMap rs
     , Frames.ReadRec rs)
-    => t m T.Text -- ^ stream of 'Text' rows
+    => Streamly.SerialT m T.Text -- ^ stream of 'Text' rows
     -> t m (Vinyl.Rec ((Either T.Text) Vinyl.:. Vinyl.ElField) rs) -- ^ stream of parsed @Either :. ElField@ rows
 streamTableEither = streamTableEitherOpt defaultParser
 {-# INLINEABLE streamTableEither #-}
@@ -543,22 +565,56 @@ streamTableEither = streamTableEitherOpt defaultParser
 -- Each field is returned in an @Either Text@ functor. @Right a@ for successful parses
 -- and @Left Text@ when parsing fails, containing the text that failed to Parse.
 --
+
+handleHeader :: forall m t.(IsStream t
+                           , MonadThrow m)
+             => ParserOptions
+             -> Streamly.SerialT m T.Text
+             -> m (Maybe [Bool], t m T.Text)
+handleHeader opts s = case columnHandler opts of
+  ICSV.ParseAll True -> return (Nothing, dropFirst s)
+  ICSV.ParseAll False ->  return (Nothing, Streamly.adapt s)
+  ICSV.ParseIgnoringHeader cs -> return (Just $ csToBool <$> cs, dropFirst s)
+  ICSV.ParseWithoutHeader cs -> return (Just $ csToBool <$> cs, Streamly.adapt s)
+  ICSV.ParseUsingHeader hm -> (, dropFirst s) . Just <$> boolsFromHeader hm s
+  where
+    dropFirst = Streamly.adapt . Streamly.drop 1
+    csToBool x = if x == ICSV.Exclude then False else True
+    boolsFromHeader :: [(Text, ICSV.ColumnState)] ->  Streamly.SerialT m T.Text -> m [Bool]
+    boolsFromHeader hm s' = do
+      let colMap = Map.fromList hm
+          boolFromColMap t = case Map.lookup t colMap of
+            Nothing -> False
+            Just cs -> csToBool cs
+      mHeaders <- Streamly.head s'
+      headers <- maybe
+                 (throwM EmptyStreamException)
+                 (return . Frames.tokenizeRow (framesParserOptionsForTokenizing opts))
+                 mHeaders
+      let headerSet = Set.fromList headers
+          missingGiven t = if t `Set.member` headerSet then Nothing else Just t
+          missingGivens = catMaybes $ fmap (missingGiven . fst) hm
+      unless (null missingGivens) $ throwM $ MissingHeadersException missingGivens
+      return $ boolFromColMap <$> headers
+
+
+
+
 -- NB:  If the inferred/given @rs@ is different from the actual file row-type, things will..go awry.
 streamTableEitherOpt
     :: forall rs t m.
     (Streamly.MonadAsync m
     , IsStream t
+    , Monad (t m)
     , Vinyl.RMap rs
     , Frames.ReadRec rs)
     => ParserOptions -- ^ parsing options
-    -> t m T.Text -- ^ stream of 'Text' rows
+    -> Streamly.SerialT m T.Text -- ^ stream of 'Text' rows
     -> t m (Vinyl.Rec ((Either T.Text) Vinyl.:. Vinyl.ElField) rs)  -- ^ stream of parsed @Either :. ElField@ rows
-streamTableEitherOpt opts =
-    Streamly.map (parse . useRowFilter (rowFilter opts) . Frames.tokenizeRow (framesParserOptions opts))
-    . handleHeader
+streamTableEitherOpt opts s = do
+  (rF, s') <- Streamly.fromEffect $ handleHeader opts s
+  Streamly.map (parse . useRowFilter rF . Frames.tokenizeRow (framesParserOptionsForTokenizing opts)) s'
   where
-    handleHeader | isNothing (headerOverride opts) = Streamly.drop 1
-                 | otherwise                       = id
     parse = Frames.readRec
 {-# INLINEABLE streamTableEitherOpt #-}
 
@@ -569,9 +625,10 @@ streamTableMaybe
     :: forall rs t m.
     (Streamly.MonadAsync m
     , IsStream t
+    , Monad (t m)
     , Vinyl.RMap rs
     , Frames.ReadRec rs)
-    => t m T.Text -- ^ stream of 'Text' rows
+    => Streamly.SerialT m T.Text -- ^ stream of 'Text' rows
     -> t m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of parsed @Maybe :. ElField@ rows
 streamTableMaybe = streamTableMaybeOpt defaultParser
 {-# INLINEABLE streamTableMaybe #-}
@@ -583,10 +640,11 @@ streamTableMaybeOpt
     :: forall rs t m.
     (Streamly.MonadAsync m
     , IsStream t
+    , Monad (t m)
     , Vinyl.RMap rs
     , Frames.ReadRec rs)
     => ParserOptions -- ^ parsing options
-    -> t m T.Text -- ^ stream of 'Text' rows
+    -> Streamly.SerialT m T.Text -- ^ stream of 'Text' rows
     -> t m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of parsed @Maybe :. ElField@ rows
 streamTableMaybeOpt opts = Streamly.map recEitherToMaybe . streamTableEitherOpt opts
 {-# INLINEABLE streamTableMaybeOpt #-}
@@ -599,10 +657,11 @@ streamTable
     :: forall rs t m.
     (Streamly.MonadAsync m
     , IsStream t
+    , Monad (t m)
     , Vinyl.RMap rs
     , StrictReadRec rs
     )
-    => t m T.Text -- ^ stream of 'Text' rows
+    => Streamly.SerialT m T.Text -- ^ stream of 'Text' rows
     -> t m (Frames.Record rs) -- ^ stream of Records
 streamTable = streamTableOpt defaultParser
 {-# INLINEABLE streamTable #-}
@@ -614,26 +673,28 @@ streamTableOpt
     :: forall rs t m.
     (Streamly.MonadAsync m
     , IsStream t
+    , Monad (t m)
     , Vinyl.RMap rs
     , StrictReadRec rs
     )
     => ParserOptions -- ^ parsing options
-    -> t m T.Text  -- ^ stream of 'Text' rows
+    -> Streamly.SerialT m T.Text  -- ^ stream of 'Text' rows
     -> t m (Frames.Record rs) -- ^ stream of Records
-streamTableOpt opts = Streamly.mapMaybe (mRec opts) . handleHeader
+streamTableOpt opts s = do
+  (rF, s') <- Streamly.fromEffect $ handleHeader opts s
+  Streamly.mapMaybe (mRec rF) s'
   where
-    handleHeader | isNothing (headerOverride opts) = Streamly.drop 1
-                 | otherwise                       = id
+    mRec rf x = recMaybe $! doParse $! useRowFilter rf $! Frames.tokenizeRow (framesParserOptionsForTokenizing opts) x
 
 --    doParse = recStrictEitherToMaybe . recEitherToStrict . Frames.readRec
 --{-# INLINE streamTableOpt #-}
 
 doParse :: (V.RMap rs, StrictReadRec rs) => [Text] -> V.Rec (Maybe V.:. V.ElField) rs
 doParse !x = recStrictEitherToMaybe $! strictReadRec x
-
+{-
 mRec :: (V.RMap rs, StrictReadRec rs) => ParserOptions -> Text -> Maybe (V.Rec V.ElField rs)
 mRec !opts !x = recMaybe $! doParse $! useRowFilter (rowFilter opts) $! Frames.tokenizeRow (framesParserOptions opts) x
-
+-}
 
 recEitherToMaybe :: Vinyl.RMap rs => Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs -> Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs
 recEitherToMaybe = Vinyl.rmap (either (const (Vinyl.Compose Nothing)) (Vinyl.Compose . Just) . Vinyl.getCompose)
@@ -721,6 +782,12 @@ draw = do
   modify $ Streamly.drop 1
   return ma
 
+peek :: Monad m => StreamState Streamly.SerialT m a (Maybe a)
+peek = do
+  s <- get
+  ma <- lift $ Streamly.head s
+  return ma
+
 foldAll :: Monad m
         => (x -> a -> x) -> x -> (x -> b) -> StreamState Streamly.SerialT m a b
 foldAll step start extract = do
@@ -751,32 +818,52 @@ prefixInference rF = do
                  id
 {-# INLINEABLE prefixInference #-}
 
-readColHeaders :: (Frames.ColumnTypeable a
+
+
+readColHeaders :: forall a b m.
+                  (Frames.ColumnTypeable a
                   , Monoid a
-                  , Monad m)
-               => Maybe [Text] -- headerOverride
-               -> Maybe (Text -> Bool) --headerFilter
+                  , Monad m
+                  , MonadThrow m)
+               => ICSV.RowGenColumnHandler b-- headerOverride
                -> Streamly.SerialT m [Text]
-               -> m ([(Text, a)], Maybe [Bool])
-readColHeaders hOverride hFilter = evalStateT $ do
-  (headerRow, rF) <- case hFilter of
-    Nothing -> do
-      hRow <- maybe (fromMaybe err <$> draw)
-                     pure
-                     hOverride
-      return (hRow, Nothing)
-    Just ff -> do
-      allHeaders <- fromMaybe err <$> draw
-      let rF = Just $ fmap ff allHeaders
-          cNames = fromMaybe (useRowFilter rF allHeaders) hOverride
-      return (cNames, rF)
+               -> m ([(Text, a)], ICSV.ParseColumnHandler)
+readColHeaders rgColHandler = evalStateT $ do
+  let csToBool x = if x == ICSV.Exclude then False else True
+  (headerRow, pch, rF) <- case rgColHandler of
+    ICSV.GenUsingHeader f -> do
+      allHeaders <- draw >>= maybe err return
+      let allColStates = f <$> allHeaders
+          allBools = csToBool <$> allColStates
+          includedNames = ICSV.includedNames allColStates
+          parseColHeader = ICSV.colStatesAndHeadersToParseColHandler allColStates allHeaders
+      return (includedNames, parseColHeader, Just allBools)
+    ICSV.GenIgnoringHeader f -> do
+      allHeaders <- draw >>= maybe err return
+      let allIndexes = fst $ unzip $ zip [0..] allHeaders
+          allColStates = f <$> allIndexes
+          allBools = csToBool <$> allColStates
+          includedNames = ICSV.includedNames allColStates
+          parseColHeader = ICSV.ParseIgnoringHeader allColStates
+      return (includedNames, parseColHeader, Just allBools)
+    ICSV.GenWithoutHeader f -> do
+      sampleRow <- peek >>= maybe err return
+      let allIndexes = fst $ unzip $ zip [0..] sampleRow
+          allColStates = f <$> allIndexes
+          allBools = csToBool <$> allColStates
+          includedNames = ICSV.includedNames allColStates
+          parseColHeader = ICSV.ParseWithoutHeader allColStates
+      return (includedNames, parseColHeader, Just allBools)
 
   colTypes <- prefixInference rF
-  unless (length headerRow == length colTypes) (error errNumColumns)
-  return (zip headerRow colTypes, rF)
-  where err = error "Empty Producer has no header row"
+  unless (length headerRow == length colTypes) errNumColumns
+  return (zip headerRow colTypes, pch)
+  where err :: StreamState Streamly.SerialT m [Text] [Text]  = lift $ throwM EmptyStreamException --"Empty Producer has no header row"
         errNumColumns =
-          unlines
+          lift
+          $ throwM
+          $ BadHeaderException
+          $ unlines
           [ ""
           , "Error parsing CSV: "
           , "  Number of columns in header differs from number of columns"
