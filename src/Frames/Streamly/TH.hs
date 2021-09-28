@@ -149,7 +149,6 @@ data RowGen (b :: GHC.Type) (a :: [GHC.Type]) =
          , separator      :: Separator
            -- ^ The string that separates the columns on a
            -- row.
---         , headerFilter :: Maybe (Text -> Bool)
          , rowTypeName    :: String
            -- ^ The row type that enumerates all
            -- columns.
@@ -189,37 +188,56 @@ modifyColumnHandler f rg =
   in rg { Frames.Streamly.TH.columnHandler = newColHandler }
 {-# INLINEABLE modifyColumnHandler #-}
 
--- | Default Column Handler.  Use given names from a header row.
+-- | Default Column Handler. Declare one type per column.
+-- Use the header to generate names.
 allColumnsAsNamed :: ICSV.RowGenColumnHandler Text
 allColumnsAsNamed = ICSV.GenUsingHeader Include
 {-# INLINEABLE allColumnsAsNamed #-}
 
-
+-- | Helper for decalring column types from a file with no header.
 noHeaderColumnsNumbered' :: ICSV.RowGenColumnHandler Int
 noHeaderColumnsNumbered' = ICSV.GenWithoutHeader $ \n -> ICSV.Include $ show n
+{-# INLINEABLE noHeaderColumnsNumbered' #-}
 
+-- | Use a given prefix and append the column number to generate column types for a file with no header.
+noHeaderColumnsNumbered :: Text -> ICSV.RowGenColumnHandler Int
+noHeaderColumnsNumbered prefix = prefixColumns prefix $ noHeaderColumnsNumbered'
+{-# INLINEABLE noHeaderColumnsNumbered #-}
+
+-- | Add a prefix to all the generated column type names.
 prefixColumns :: Text -> ICSV.RowGenColumnHandler a -> ICSV.RowGenColumnHandler a
 prefixColumns p ch = ICSV.modifyColumnStateFunction ch g where
   g f = \x -> case f x of
     ICSV.Exclude -> ICSV.Exclude
     ICSV.Include t -> ICSV.Include $ p <> t
+{-# INLINEABLE prefixColumns #-}
 
-noHeaderColumnsNumbered :: Text -> ICSV.RowGenColumnHandler Int
-noHeaderColumnsNumbered prefix = prefixColumns prefix $ noHeaderColumnsNumbered'
-
+-- | Generate all column type names from the header but add a prefix.
 prefixAsNamed :: Text -> ICSV.RowGenColumnHandler Text
 prefixAsNamed p = prefixColumns p allColumnsAsNamed
+{-# INLINEABLE prefixAsNamed #-}
 
+-- | Generate types for only a subset of the columns.
+-- Generated 'ParserOptions' will select the correct columns when loading.
 columnSubset :: Ord a => Set a -> ICSV.RowGenColumnHandler a -> ICSV.RowGenColumnHandler a
 columnSubset s rgch = modifyColumnStateFunction rgch g where
   g f = \x -> if x `Set.member` s then f x else ICSV.Exclude
+{-# INLINEABLE columnSubset #-}
 
+-- | Generate Column Type Names for only the headers given in the map.  Use
+-- the names given as values in the map rather than those in the header.
+-- Generated 'ParserOptions' will select the correct columns when loading.
 renamedHeaderSubset :: Map Text Text -> ICSV.RowGenColumnHandler Text
 renamedHeaderSubset renamedS = ICSV.GenUsingHeader f where
   f x = case Map.lookup x renamedS of
     Nothing -> Exclude
     Just t -> Include t
+{-# INLINEABLE renamedHeaderSubset #-}
 
+-- | Generate Column Type Names for only the given numbered Columns using
+-- names given as values in the map.  Can ignore a header row or work without one
+-- as set by the first parameter.
+-- Generated 'ParserOptions' will select the correct columns when loading.
 namedColumnNumberSubset :: Bool -> Map Int Text -> ICSV.RowGenColumnHandler Int
 namedColumnNumberSubset hasHeader namedS =
   case hasHeader of
@@ -229,12 +247,16 @@ namedColumnNumberSubset hasHeader namedS =
     f n = case Map.lookup n namedS of
       Nothing -> ICSV.Exclude
       Just t -> ICSV.Include t
+{-# INLINEABLE namedColumnNumberSubset #-}
 
+-- | Use the given names to declare Column Type Names for the
+-- first N (= length of the given list of names) columns of the given file.
+-- Generated 'ParserOptions' will select the correct columns when loading.
 namesGiven :: Bool -> [Text] -> ICSV.RowGenColumnHandler Int
 namesGiven hasHeader names = namedColumnNumberSubset hasHeader m
   where
     m = Map.fromList $ zip [0..] names
-
+{-# INLINEABLE namesGiven #-}
 
 -- -- | Generate a type for each row of a table. This will be something
 -- -- like @Record ["x" :-> a, "y" :-> b, "z" :-> c]@.

@@ -55,8 +55,7 @@ library
          , Relude.Extra)
   default-language: Haskell2010
 
-test-suite Demo
-  type: exitcode-stdio-1.0
+executable Demo
   main-is: Main.hs
   other-modules:
       DemoPaths
@@ -67,6 +66,29 @@ test-suite Demo
   build-depends:
       Frames
     , Frames-streamly
+    , base
+    , containers
+    , foldl
+    , streamly
+    , text
+    , vinyl
+  default-language: Haskell2010
+
+test-suite FramesStreamlySpec
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules: FramesStreamlySpec
+                 SpecHelper
+                 DemoPaths
+                 Paths_Frames_streamly
+  hs-source-dirs:
+      test
+  ghc-options: -Wall -O2 -static -fdicts-strict -fmax-worker-args=16 -fspec-constr-recursive=16
+  build-depends:
+      Frames
+    , Frames-streamly
+    , hspec
+    , hspec-discover
     , base
     , containers
     , foldl
