@@ -354,7 +354,7 @@ tableTypesText' RowGen {..} = do
 tableTypes' :: forall a b c. (c ~ CoRec ColInfo a, ColumnTypeable c, Monoid c)
             => RowGen b a -> DecsQ
 tableTypes' (RowGen {..}) = do
-  (headers, pch) <- runIO $ SCSV.readColHeaders columnHandler lineSource :: Q ([(T.Text, c)], ICSV.ParseColumnHandler)
+  (headers, pch) <- runIO $ SCSV.readColHeaders columnHandler lineSource :: Q ([(T.Text, c)], ICSV.ParseColumnSelector)
   (colTypes, colDecs) <- (second concat . unzip)
                          <$> mapM (uncurry mkColDecs)
                          (map (second colType) headers)

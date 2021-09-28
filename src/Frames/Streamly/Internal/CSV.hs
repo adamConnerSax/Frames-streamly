@@ -25,18 +25,15 @@ type family ColumnIdType (a :: ColumnId) :: Type where
 
 -- For RowGen
 
+-- |  Type to specify how columns are selected when types are generated
+-- by tableTypes.  Types can be generated from header text or column position.
+-- This type is parameterized by that choice.
 data RowGenColumnSelector (a :: ColumnId) where
   GenUsingHeader :: (Text -> ColumnState) -> RowGenColumnSelector 'ColumnByName
   GenIgnoringHeader :: (Int -> ColumnState) -> RowGenColumnSelector 'ColumnByPosition
   GenWithoutHeader :: (Int -> ColumnState) -> RowGenColumnSelector 'ColumnByPosition
 
-{-
-columnStateFunction :: RowGenColumnHandler a -> (a -> ColumnState)
-columnStateFunction (UseHeader f) = f
-columnStateFunction (IgnoreHeader f) = f
-columnStateFunction (NoHeader f) = f
--}
-
+-- | combinator to update or switch out the column selection function of a RowGenColumnSelector
 modifyColumnSelector :: RowGenColumnSelector a
                      -> ((ColumnIdType a -> ColumnState) -> (ColumnIdType a -> ColumnState))
                      -> RowGenColumnSelector a
@@ -46,12 +43,13 @@ modifyColumnSelector (GenWithoutHeader f) g = GenWithoutHeader $ g f
 
 
 -- For ParserOptions
-data ParseColumnHandler =
+data ParseColumnSelector =
   ParseAll Bool -- ^ True if there's a header and false if not
   | ParseUsingHeader [(Text, ColumnState)]
   | ParseIgnoringHeader [ColumnState]
   | ParseWithoutHeader [ColumnState] deriving (Lift)
 
+-- Helpers for generating the Correct ParseColumnSelector
 
 colStatesToColNames :: [ColumnState] -> [Text]
 colStatesToColNames = catMaybes . fmap f where
@@ -73,7 +71,7 @@ includedNames = catMaybes . fmap f where
 {-# INLINEABLE includedNames #-}
 
 
-colStatesAndHeadersToParseColHandler :: [ColumnState] -> [Text] -> ParseColumnHandler
+colStatesAndHeadersToParseColHandler :: [ColumnState] -> [Text] -> ParseColumnSelector
 colStatesAndHeadersToParseColHandler cs hs = ParseUsingHeader $ includedColStatesWithHeaders cs hs
 {-# INLINEABLE colStatesAndHeadersToParseColHandler #-}
 

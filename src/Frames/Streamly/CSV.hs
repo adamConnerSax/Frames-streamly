@@ -150,7 +150,7 @@ instance Exception FramesCSVException
 
 data ParserOptions = ParserOptions
   {
-    columnHandler :: ICSV.ParseColumnHandler
+    columnSelector :: ICSV.ParseColumnSelector
   , columnSeparator :: Frames.Separator
   , quotingMode :: Frames.QuotingMode
 --  , includedHeaders :: Maybe HeaderList
@@ -571,7 +571,7 @@ handleHeader :: forall m t.(IsStream t
              => ParserOptions
              -> Streamly.SerialT m T.Text
              -> m (Maybe [Bool], t m T.Text)
-handleHeader opts s = case columnHandler opts of
+handleHeader opts s = case columnSelector opts of
   ICSV.ParseAll True -> return (Nothing, dropFirst s)
   ICSV.ParseAll False ->  return (Nothing, Streamly.adapt s)
   ICSV.ParseIgnoringHeader cs -> return (Just $ csToBool <$> cs, dropFirst s)
@@ -685,24 +685,19 @@ streamTableOpt opts s = do
   Streamly.mapMaybe (mRec rF) s'
   where
     mRec rf x = recMaybe $! doParse $! useRowFilter rf $! Frames.tokenizeRow (framesParserOptionsForTokenizing opts) x
-
---    doParse = recStrictEitherToMaybe . recEitherToStrict . Frames.readRec
---{-# INLINE streamTableOpt #-}
+{-# INLINEABLE streamTableOpt #-}
 
 doParse :: (V.RMap rs, StrictReadRec rs) => [Text] -> V.Rec (Maybe V.:. V.ElField) rs
 doParse !x = recStrictEitherToMaybe $! strictReadRec x
-{-
-mRec :: (V.RMap rs, StrictReadRec rs) => ParserOptions -> Text -> Maybe (V.Rec V.ElField rs)
-mRec !opts !x = recMaybe $! doParse $! useRowFilter (rowFilter opts) $! Frames.tokenizeRow (framesParserOptions opts) x
--}
+{-# INLINEABLE doParse #-}
 
 recEitherToMaybe :: Vinyl.RMap rs => Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs -> Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs
 recEitherToMaybe = Vinyl.rmap (either (const (Vinyl.Compose Nothing)) (Vinyl.Compose . Just) . Vinyl.getCompose)
---{-# INLINE recEitherToMaybe #-}
+{-# INLINE recEitherToMaybe #-}
 
 recStrictEitherToMaybe :: Vinyl.RMap rs => Vinyl.Rec (Strict.Either T.Text Vinyl.:. Vinyl.ElField) rs -> Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs
 recStrictEitherToMaybe = Vinyl.rmap (Strict.either (const (Vinyl.Compose Nothing)) (Vinyl.Compose . Just) . Vinyl.getCompose)
---{-# INLINE recStrictEitherToMaybe #-}
+{-# INLINE recStrictEitherToMaybe #-}
 
 {-
 recEitherToStrict :: Vinyl.RMap rs => Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs -> Vinyl.Rec (Strict.Either T.Text Vinyl.:. Vinyl.ElField) rs
@@ -818,8 +813,6 @@ prefixInference rF = do
                  id
 {-# INLINEABLE prefixInference #-}
 
-
-
 readColHeaders :: forall a b m.
                   (Frames.ColumnTypeable a
                   , Monoid a
@@ -827,7 +820,7 @@ readColHeaders :: forall a b m.
                   , MonadThrow m)
                => ICSV.RowGenColumnSelector b-- headerOverride
                -> Streamly.SerialT m [Text]
-               -> m ([(Text, a)], ICSV.ParseColumnHandler)
+               -> m ([(Text, a)], ICSV.ParseColumnSelector)
 readColHeaders rgColHandler = evalStateT $ do
   let csToBool x = if x == ICSV.Exclude then False else True
   (headerRow, pch, rF) <- case rgColHandler of
