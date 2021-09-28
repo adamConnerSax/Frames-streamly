@@ -825,7 +825,7 @@ readColHeaders :: forall a b m.
                   , Monoid a
                   , Monad m
                   , MonadThrow m)
-               => ICSV.RowGenColumnHandler b-- headerOverride
+               => ICSV.RowGenColumnSelector b-- headerOverride
                -> Streamly.SerialT m [Text]
                -> m ([(Text, a)], ICSV.ParseColumnHandler)
 readColHeaders rgColHandler = evalStateT $ do

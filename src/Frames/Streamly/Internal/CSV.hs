@@ -1,5 +1,7 @@
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveLift #-}
 {-# Language GADTs #-}
+{-# LANGUAGE TypeFamilies #-}
 {-|
 Module      : Frames.Streamly.Internal.CSV
 Description : Internal module to make the HeaderList opaque
@@ -15,12 +17,18 @@ import Language.Haskell.TH.Syntax (Lift)
 
 data ColumnState = Exclude | Include Text deriving (Eq, Lift)
 
+data ColumnId = ColumnByName | ColumnByPosition
+
+type family ColumnIdType (a :: ColumnId) :: Type where
+  ColumnIdType 'ColumnByName = Text
+  ColumnIdType 'ColumnByPosition = Int
+
 -- For RowGen
 
-data RowGenColumnHandler a where
-  GenUsingHeader :: (Text -> ColumnState) -> RowGenColumnHandler Text
-  GenIgnoringHeader :: (Int -> ColumnState) -> RowGenColumnHandler Int
-  GenWithoutHeader :: (Int -> ColumnState) -> RowGenColumnHandler Int
+data RowGenColumnSelector (a :: ColumnId) where
+  GenUsingHeader :: (Text -> ColumnState) -> RowGenColumnSelector 'ColumnByName
+  GenIgnoringHeader :: (Int -> ColumnState) -> RowGenColumnSelector 'ColumnByPosition
+  GenWithoutHeader :: (Int -> ColumnState) -> RowGenColumnSelector 'ColumnByPosition
 
 {-
 columnStateFunction :: RowGenColumnHandler a -> (a -> ColumnState)
@@ -29,10 +37,12 @@ columnStateFunction (IgnoreHeader f) = f
 columnStateFunction (NoHeader f) = f
 -}
 
-modifyColumnStateFunction :: RowGenColumnHandler a -> ((a -> ColumnState) -> (a -> ColumnState)) -> RowGenColumnHandler a
-modifyColumnStateFunction (GenUsingHeader f) g = GenUsingHeader $ g f
-modifyColumnStateFunction (GenIgnoringHeader f) g = GenIgnoringHeader $ g f
-modifyColumnStateFunction (GenWithoutHeader f) g = GenWithoutHeader $ g f
+modifyColumnSelector :: RowGenColumnSelector a
+                     -> ((ColumnIdType a -> ColumnState) -> (ColumnIdType a -> ColumnState))
+                     -> RowGenColumnSelector a
+modifyColumnSelector (GenUsingHeader f) g = GenUsingHeader $ g f
+modifyColumnSelector (GenIgnoringHeader f) g = GenIgnoringHeader $ g f
+modifyColumnSelector (GenWithoutHeader f) g = GenWithoutHeader $ g f
 
 
 -- For ParserOptions

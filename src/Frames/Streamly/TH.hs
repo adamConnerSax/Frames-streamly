@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -17,12 +18,13 @@
 module Frames.Streamly.TH
   (
     module Frames.Streamly.TH
+  , ColumnId(..)
   )
 where
 
 import qualified Frames.Streamly.CSV as SCSV
-import Frames.Streamly.Internal.CSV as ICSV
---import Frames.Streamly.Internal.CSV (RowGenColumnHandler(..))
+import qualified Frames.Streamly.Internal.CSV as ICSV
+import Frames.Streamly.Internal.CSV (ColumnId(..))
 import Frames.Streamly.CSV (ParserOptions(..))
 
 import Prelude hiding (Type, lift)
@@ -138,8 +140,8 @@ declarePrefixedColumn colName prefix colTypeName =
 -- | Control how row and named column types are generated.
 -- The first type argument is @Text@ or @Int@ depending how columns are indexed.
 -- The second type argument is a type-level list of the possible column types.
-data RowGen (b :: GHC.Type) (a :: [GHC.Type]) =
-  RowGen { columnHandler    :: ICSV.RowGenColumnHandler b
+data RowGen (b :: ColumnId) (a :: [GHC.Type]) =
+  RowGen { columnHandler    :: ICSV.RowGenColumnSelector b
            -- ^ Use these column names. If empty, expect a
            -- header row in the data file to provide
            -- column names.
@@ -173,16 +175,16 @@ data RowGen (b :: GHC.Type) (a :: [GHC.Type]) =
 -- get column names from the data file, use the default column
 -- separator (a comma), infer column types from the default 'Columns'
 -- set of types, and produce a row type with name @Row@.
-rowGen :: FilePath -> RowGen Text CommonColumns
+rowGen :: FilePath -> RowGen 'ColumnByName CommonColumns
 rowGen = RowGen allColumnsAsNamed "" defaultSep "Row" Proxy 1000 . SCSV.streamTokenized'
 
 -- | Like 'rowGen', but will also generate custom data types for
 -- 'Categorical' variables with up to 8 distinct variants.
-rowGenCat :: FilePath -> RowGen Text CommonColumnsCat
+rowGenCat :: FilePath -> RowGen 'ColumnByName CommonColumnsCat
 rowGenCat = RowGen allColumnsAsNamed "" defaultSep "Row" Proxy 1000 . SCSV.streamTokenized'
 
 -- | Update or replace the columnHandler in a RowGen
-modifyColumnHandler :: (ICSV.RowGenColumnHandler a -> ICSV.RowGenColumnHandler b) -> RowGen a x -> RowGen b x
+modifyColumnHandler :: (ICSV.RowGenColumnSelector a -> ICSV.RowGenColumnSelector b) -> RowGen a x -> RowGen b x
 modifyColumnHandler f rg =
   let newColHandler = f (Frames.Streamly.TH.columnHandler rg)
   in rg { Frames.Streamly.TH.columnHandler = newColHandler }
@@ -190,55 +192,55 @@ modifyColumnHandler f rg =
 
 -- | Default Column Handler. Declare one type per column.
 -- Use the header to generate names.
-allColumnsAsNamed :: ICSV.RowGenColumnHandler Text
-allColumnsAsNamed = ICSV.GenUsingHeader Include
+allColumnsAsNamed :: ICSV.RowGenColumnSelector 'ColumnByName
+allColumnsAsNamed = ICSV.GenUsingHeader ICSV.Include
 {-# INLINEABLE allColumnsAsNamed #-}
 
 -- | Helper for decalring column types from a file with no header.
-noHeaderColumnsNumbered' :: ICSV.RowGenColumnHandler Int
+noHeaderColumnsNumbered' :: ICSV.RowGenColumnSelector 'ColumnByPosition
 noHeaderColumnsNumbered' = ICSV.GenWithoutHeader $ \n -> ICSV.Include $ show n
 {-# INLINEABLE noHeaderColumnsNumbered' #-}
 
 -- | Use a given prefix and append the column number to generate column types for a file with no header.
-noHeaderColumnsNumbered :: Text -> ICSV.RowGenColumnHandler Int
+noHeaderColumnsNumbered :: Text -> ICSV.RowGenColumnSelector 'ColumnByPosition
 noHeaderColumnsNumbered prefix = prefixColumns prefix $ noHeaderColumnsNumbered'
 {-# INLINEABLE noHeaderColumnsNumbered #-}
 
 -- | Add a prefix to all the generated column type names.
-prefixColumns :: Text -> ICSV.RowGenColumnHandler a -> ICSV.RowGenColumnHandler a
-prefixColumns p ch = ICSV.modifyColumnStateFunction ch g where
+prefixColumns :: Text -> ICSV.RowGenColumnSelector a -> ICSV.RowGenColumnSelector a
+prefixColumns p ch = ICSV.modifyColumnSelector ch g where
   g f = \x -> case f x of
     ICSV.Exclude -> ICSV.Exclude
     ICSV.Include t -> ICSV.Include $ p <> t
 {-# INLINEABLE prefixColumns #-}
 
 -- | Generate all column type names from the header but add a prefix.
-prefixAsNamed :: Text -> ICSV.RowGenColumnHandler Text
+prefixAsNamed :: Text -> ICSV.RowGenColumnSelector 'ColumnByName
 prefixAsNamed p = prefixColumns p allColumnsAsNamed
 {-# INLINEABLE prefixAsNamed #-}
 
 -- | Generate types for only a subset of the columns.
 -- Generated 'ParserOptions' will select the correct columns when loading.
-columnSubset :: Ord a => Set a -> ICSV.RowGenColumnHandler a -> ICSV.RowGenColumnHandler a
-columnSubset s rgch = modifyColumnStateFunction rgch g where
+columnSubset :: Ord (ICSV.ColumnIdType a) => Set (ICSV.ColumnIdType a) -> ICSV.RowGenColumnSelector a -> ICSV.RowGenColumnSelector a
+columnSubset s rgch = ICSV.modifyColumnSelector rgch g where
   g f = \x -> if x `Set.member` s then f x else ICSV.Exclude
 {-# INLINEABLE columnSubset #-}
 
 -- | Generate Column Type Names for only the headers given in the map.  Use
 -- the names given as values in the map rather than those in the header.
 -- Generated 'ParserOptions' will select the correct columns when loading.
-renamedHeaderSubset :: Map Text Text -> ICSV.RowGenColumnHandler Text
+renamedHeaderSubset :: Map Text Text -> ICSV.RowGenColumnSelector 'ColumnByName
 renamedHeaderSubset renamedS = ICSV.GenUsingHeader f where
   f x = case Map.lookup x renamedS of
-    Nothing -> Exclude
-    Just t -> Include t
+    Nothing -> ICSV.Exclude
+    Just t -> ICSV.Include t
 {-# INLINEABLE renamedHeaderSubset #-}
 
 -- | Generate Column Type Names for only the given numbered Columns using
 -- names given as values in the map.  Can ignore a header row or work without one
 -- as set by the first parameter.
 -- Generated 'ParserOptions' will select the correct columns when loading.
-namedColumnNumberSubset :: Bool -> Map Int Text -> ICSV.RowGenColumnHandler Int
+namedColumnNumberSubset :: Bool -> Map Int Text -> ICSV.RowGenColumnSelector 'ColumnByPosition
 namedColumnNumberSubset hasHeader namedS =
   case hasHeader of
     True -> ICSV.GenIgnoringHeader f
@@ -252,7 +254,7 @@ namedColumnNumberSubset hasHeader namedS =
 -- | Use the given names to declare Column Type Names for the
 -- first N (= length of the given list of names) columns of the given file.
 -- Generated 'ParserOptions' will select the correct columns when loading.
-namesGiven :: Bool -> [Text] -> ICSV.RowGenColumnHandler Int
+namesGiven :: Bool -> [Text] -> ICSV.RowGenColumnSelector 'ColumnByPosition
 namesGiven hasHeader names = namedColumnNumberSubset hasHeader m
   where
     m = Map.fromList $ zip [0..] names
