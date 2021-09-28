@@ -236,6 +236,24 @@ renamedHeaderSubset renamedS = ICSV.GenUsingHeader f where
     Just t -> ICSV.Include t
 {-# INLINEABLE renamedHeaderSubset #-}
 
+-- | rename some column types while leaving the rest alone.
+renameSome ::  Ord (ICSV.ColumnIdType a) => Map (ICSV.ColumnIdType a) Text -> ICSV.RowGenColumnSelector a -> ICSV.RowGenColumnSelector a
+renameSome m rgcs = ICSV.modifyColumnSelector rgcs g where
+  g f cid = case Map.lookup cid m of
+    Nothing -> f cid
+    Just x -> ICSV.Include x
+{-# INLINEABLE renameSome #-}
+
+-- | rename some column types while leaving the rest alone.
+renameSomeUsingNames :: Map Text Text -> ICSV.RowGenColumnSelector 'ICSV.ColumnByName -> ICSV.RowGenColumnSelector 'ICSV.ColumnByName
+renameSomeUsingNames = renameSome
+{-# INLINEABLE renameSomeUsingNames #-}
+
+-- | rename some column types while leaving the rest alone.
+renameSomeUsingPositions :: Map Int Text -> ICSV.RowGenColumnSelector 'ICSV.ColumnByPosition -> ICSV.RowGenColumnSelector 'ICSV.ColumnByPosition
+renameSomeUsingPositions = renameSome
+{-# INLINEABLE renameSomeUsingPositions #-}
+
 -- | Generate Column Type Names for only the given numbered Columns using
 -- names given as values in the map.  Can ignore a header row or work without one
 -- as set by the first parameter.
