@@ -22,31 +22,37 @@ usePath :: FilePath -> IO FilePath
 usePath x =  fmap (\dd -> dd ++ "/" ++ x) Paths.getDataDir
 
 ffColSubsetRowGen :: FStreamly.RowGen 'FStreamly.ColumnByName Frames.CommonColumns
-ffColSubsetRowGen = FStreamly.modifyColumnHandler modHandler rowGen
+ffColSubsetRowGen = FStreamly.modifyColumnSelector modSelector rowGen
   where
     rowTypeName = "FFColSubset"
     rowGen = (FStreamly.rowGen (thPath forestFiresPath)) { FStreamly.rowTypeName = rowTypeName }
-    modHandler = FStreamly.columnSubset (Set.fromList ["X","Y","month","day","temp","wind"])
+    modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
+
+ffRenameDayRowGen :: FStreamly.RowGen 'FStreamly.ColumnByName Frames.CommonColumns
+ffRenameDayRowGen = FStreamly.modifyColumnSelector modSelector rg where
+  rg = ffColSubsetRowGen { FStreamly.rowTypeName = "FFRenameDay"}
+  modSelector = FStreamly.renameSome (Map.fromList [(FStreamly.HeaderText "day", FStreamly.ColTypeName "DayOfWeek")])
 
 ffNoHeaderRowGen :: FStreamly.RowGen 'FStreamly.ColumnByPosition Frames.CommonColumns
-ffNoHeaderRowGen = FStreamly.modifyColumnHandler modHandler rowGen
+ffNoHeaderRowGen = FStreamly.modifyColumnSelector modSelector rowGen
   where
     rowTypeName = "FFNoHeader"
     rowGen = (FStreamly.rowGen (thPath forestFiresNoHeaderPath)) { FStreamly.rowTypeName = rowTypeName }
-    modHandler = const $ FStreamly.noHeaderColumnsNumbered "Col"
+    modSelector = const $ FStreamly.noHeaderColumnsNumbered "Col"
 
 ffIgnoreHeaderRowGen :: FStreamly.RowGen 'FStreamly.ColumnByPosition  Frames.CommonColumns
-ffIgnoreHeaderRowGen = FStreamly.modifyColumnHandler modHandler rowGen
+ffIgnoreHeaderRowGen = FStreamly.modifyColumnSelector modSelector rowGen
   where
     rowTypeName = "FFIgnoreHeader"
     rowGen = (FStreamly.rowGen (thPath forestFiresPath)) { FStreamly.rowTypeName = rowTypeName }
-    modHandler = const $ FStreamly.namesGiven True $ ("Col" <>) . T.pack . show <$> ([0..12] :: [Int])
+    modSelector = const $ FStreamly.namesGiven True $ fmap FStreamly.ColTypeName $ ("Col" <>) . T.pack . show <$> ([0..12] :: [Int])
 
 ffIgnoreHeaderChooseNamesRowGen :: FStreamly.RowGen 'FStreamly.ColumnByPosition  Frames.CommonColumns
-ffIgnoreHeaderChooseNamesRowGen = FStreamly.modifyColumnHandler modHandler rowGen
+ffIgnoreHeaderChooseNamesRowGen = FStreamly.modifyColumnSelector modSelector rowGen
   where
     rowTypeName = "FFIgnoreHeaderChooseNames"
     rowGen = (FStreamly.rowGen (thPath forestFiresPath)) { FStreamly.rowTypeName = rowTypeName }
-    modHandler = const
+    modSelector = const
                  $ FStreamly.namedColumnNumberSubset True
-                 $ Map.fromList [(0, "X"), (1,"Y"), (2, "Month"), (3, "Day"), (8, "Temp"), (10, "Wind")]
+                 $ fmap FStreamly.ColTypeName
+                 $ Map.fromList [(0, "X"), (1,"Y"), (2, "Month"), (3, "DayOfWeek"), (8, "Temp"), (10, "Wind")]

@@ -580,21 +580,22 @@ handleHeader opts s = case columnSelector opts of
   where
     dropFirst = Streamly.adapt . Streamly.drop 1
     csToBool x = if x == ICSV.Exclude then False else True
-    boolsFromHeader :: [(Text, ICSV.ColumnState)] ->  Streamly.SerialT m T.Text -> m [Bool]
+    boolsFromHeader :: [(ICSV.HeaderText, ICSV.ColumnState)] ->  Streamly.SerialT m T.Text -> m [Bool]
     boolsFromHeader hm s' = do
       let colMap = Map.fromList hm
           boolFromColMap t = case Map.lookup t colMap of
             Nothing -> False
             Just cs -> csToBool cs
       mHeaders <- Streamly.head s'
-      headers <- maybe
-                 (throwM EmptyStreamException)
-                 (return . Frames.tokenizeRow (framesParserOptionsForTokenizing opts))
-                 mHeaders
+      headers <- ICSV.HeaderText
+                 <<$>> maybe
+                      (throwM EmptyStreamException)
+                      (return . Frames.tokenizeRow (framesParserOptionsForTokenizing opts))
+                      mHeaders
       let headerSet = Set.fromList headers
           missingGiven t = if t `Set.member` headerSet then Nothing else Just t
           missingGivens = catMaybes $ fmap (missingGiven . fst) hm
-      unless (null missingGivens) $ throwM $ MissingHeadersException missingGivens
+      unless (null missingGivens) $ throwM $ MissingHeadersException $ fmap ICSV.headerText missingGivens
       return $ boolFromColMap <$> headers
 
 
@@ -820,12 +821,12 @@ readColHeaders :: forall a b m.
                   , MonadThrow m)
                => ICSV.RowGenColumnSelector b-- headerOverride
                -> Streamly.SerialT m [Text]
-               -> m ([(Text, a)], ICSV.ParseColumnSelector)
+               -> m ([(ICSV.ColTypeName, a)], ICSV.ParseColumnSelector)
 readColHeaders rgColHandler = evalStateT $ do
   let csToBool x = if x == ICSV.Exclude then False else True
   (headerRow, pch, rF) <- case rgColHandler of
     ICSV.GenUsingHeader f -> do
-      allHeaders <- draw >>= maybe err return
+      allHeaders <- ICSV.HeaderText <<$>> (draw >>= maybe err return)
       let allColStates = f <$> allHeaders
           allBools = csToBool <$> allColStates
           includedNames = ICSV.includedNames allColStates

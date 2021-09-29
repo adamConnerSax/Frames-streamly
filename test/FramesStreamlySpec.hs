@@ -20,9 +20,14 @@ numRecs = Foldl.fold Foldl.length
 
 FStreamly.tableTypes "ForestFires" (Paths.thPath Paths.forestFiresPath)
 FStreamly.tableTypes' Paths.ffColSubsetRowGen
+FStreamly.tableTypes' Paths.ffRenameDayRowGen
 FStreamly.tableTypes' Paths.ffNoHeaderRowGen
 FStreamly.tableTypes' Paths.ffIgnoreHeaderRowGen
 FStreamly.tableTypes' Paths.ffIgnoreHeaderChooseNamesRowGen
+
+-- TODO
+-- 1. Test renameSome
+-- 2. Test different files with shared chosen columnNames
 
 spec :: Spec
 spec = do
@@ -30,6 +35,7 @@ spec = do
   forestFiresNoHeaderPath <- runIO $ Paths.usePath Paths.forestFiresNoHeaderPath
   forestFires :: Frames.Frame ForestFires <- runIO $ FStreamly.inCoreAoS $ FStreamly.readTableOpt forestFiresParser forestFiresPath
   forestFiresColSubset :: Frames.Frame FFColSubset <- runIO $ FStreamly.inCoreAoS $ FStreamly.readTableOpt fFColSubsetParser forestFiresPath
+  forestFiresRenameDay :: Frames.Frame FFRenameDay <- runIO $ FStreamly.inCoreAoS $ FStreamly.readTableOpt fFColSubsetParser forestFiresPath
   forestFiresNoHeader :: Frames.Frame FFNoHeader <- runIO $ FStreamly.inCoreAoS $ FStreamly.readTableOpt fFNoHeaderParser forestFiresNoHeaderPath
   forestFiresIgnoreHeader :: Frames.Frame FFIgnoreHeader <- runIO $ FStreamly.inCoreAoS $ FStreamly.readTableOpt fFIgnoreHeaderParser forestFiresPath
   forestFiresIgnoreHeaderChooseNames :: Frames.Frame FFIgnoreHeaderChooseNames <-
@@ -49,5 +55,5 @@ spec = do
         in rcasted == forestFiresColSubset
       it "generate types from column numbers rather than headers.  Also from column numbers when there is no header.  Those should be the same." $
         forestFiresNoHeader == forestFiresIgnoreHeader
-      it "generate named types for columns chosen by col number.  In this case, should match col subset tested above" $
-        forestFiresIgnoreHeaderChooseNames == forestFiresColSubset
+      it "generate named types for columns chosen by col number.  In this case, should match col subset after renaming Day to DayOfWeek" $
+        forestFiresIgnoreHeaderChooseNames == forestFiresRenameDay

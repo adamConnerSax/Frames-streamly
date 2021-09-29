@@ -15,13 +15,18 @@ module Frames.Streamly.Internal.CSV where
 
 import Language.Haskell.TH.Syntax (Lift)
 
-data ColumnState = Exclude | Include Text deriving (Eq, Lift)
+newtype HeaderText = HeaderText { headerText :: Text } deriving (Show, Eq, Ord, Lift)
+
+newtype ColTypeName = ColTypeName { colTypeName :: Text } deriving (Show, Eq, Ord, Lift)
+
+data ColumnState = Exclude | Include ColTypeName deriving (Eq, Lift)
 
 data ColumnId = ColumnByName | ColumnByPosition
 
 type family ColumnIdType (a :: ColumnId) :: Type where
-  ColumnIdType 'ColumnByName = Text
+  ColumnIdType 'ColumnByName = HeaderText
   ColumnIdType 'ColumnByPosition = Int
+
 
 -- For RowGen
 
@@ -29,7 +34,7 @@ type family ColumnIdType (a :: ColumnId) :: Type where
 -- by tableTypes.  Types can be generated from header text or column position.
 -- This type is parameterized by that choice.
 data RowGenColumnSelector (a :: ColumnId) where
-  GenUsingHeader :: (Text -> ColumnState) -> RowGenColumnSelector 'ColumnByName
+  GenUsingHeader :: (HeaderText -> ColumnState) -> RowGenColumnSelector 'ColumnByName
   GenIgnoringHeader :: (Int -> ColumnState) -> RowGenColumnSelector 'ColumnByPosition
   GenWithoutHeader :: (Int -> ColumnState) -> RowGenColumnSelector 'ColumnByPosition
 
@@ -45,33 +50,33 @@ modifyColumnSelector (GenWithoutHeader f) g = GenWithoutHeader $ g f
 -- For ParserOptions
 data ParseColumnSelector =
   ParseAll Bool -- ^ True if there's a header and false if not
-  | ParseUsingHeader [(Text, ColumnState)]
+  | ParseUsingHeader [(HeaderText, ColumnState)]
   | ParseIgnoringHeader [ColumnState]
   | ParseWithoutHeader [ColumnState] deriving (Lift)
 
 -- Helpers for generating the Correct ParseColumnSelector
 
-colStatesToColNames :: [ColumnState] -> [Text]
+colStatesToColNames :: [ColumnState] -> [ColTypeName]
 colStatesToColNames = catMaybes . fmap f where
   f Exclude = Nothing
   f (Include t) = Just t
 {-# INLINEABLE colStatesToColNames #-}
 
 
-includedColStatesWithHeaders :: [ColumnState] -> [Text] -> [(Text, ColumnState)]
+includedColStatesWithHeaders :: [ColumnState] -> [HeaderText] -> [(HeaderText, ColumnState)]
 includedColStatesWithHeaders cs hs = catMaybes $ fmap f $ zip hs cs where
   f (_, Exclude) = Nothing
   f x = Just x
 {-# INLINEABLE includedColStatesWithHeaders #-}
 
-includedNames :: [ColumnState] -> [Text]
+includedNames :: [ColumnState] -> [ColTypeName]
 includedNames = catMaybes . fmap f where
   f Exclude = Nothing
   f (Include x) = Just x
 {-# INLINEABLE includedNames #-}
 
 
-colStatesAndHeadersToParseColHandler :: [ColumnState] -> [Text] -> ParseColumnSelector
+colStatesAndHeadersToParseColHandler :: [ColumnState] -> [HeaderText] -> ParseColumnSelector
 colStatesAndHeadersToParseColHandler cs hs = ParseUsingHeader $ includedColStatesWithHeaders cs hs
 {-# INLINEABLE colStatesAndHeadersToParseColHandler #-}
 
