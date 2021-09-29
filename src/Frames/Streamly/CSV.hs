@@ -93,6 +93,8 @@ module Frames.Streamly.CSV
     , streamParsedMaybe
      -- * Exceptions
     , FramesCSVException(..)
+    -- * Re-exports
+    , ReadRec
     )
 where
 
@@ -116,7 +118,8 @@ import           Streamly                                ( IsStream )
 import qualified Streamly.Internal.Memory.Unicode.Array as Streamly.Unicode.Array
 import qualified Streamly.Internal.Memory.Array.Types as Streamly.Array
 import qualified Streamly.Data.Unicode.Stream           as Streamly.Unicode
-import qualified Streamly.Internal.Data.Fold.Types as Streamly.Fold
+--import qualified Streamly.Internal.Data.Fold.Types as Streamly.Fold
+import qualified Streamly.Internal.Data.Fold as Streamly.Fold
 #endif
 
 import qualified Streamly.Internal.FileSystem.File      as Streamly.File
@@ -137,6 +140,7 @@ import qualified Data.Vinyl.Class.Method                as Vinyl
 
 import qualified Frames                                 as Frames
 import qualified Frames.CSV                             as Frames
+import Frames.CSV                             (ReadRec)
 import qualified Frames.ShowCSV                         as Frames
 import qualified Frames.ColumnTypeable                  as Frames
 import qualified Data.Vinyl as V
@@ -632,7 +636,7 @@ streamTableEitherOpt
     -> Streamly.SerialT m T.Text -- ^ stream of 'Text' rows
     -> t m (Vinyl.Rec ((Either T.Text) Vinyl.:. Vinyl.ElField) rs)  -- ^ stream of parsed @Either :. ElField@ rows
 streamTableEitherOpt opts s = do
-  (rF, s') <- Streamly.fromEffect $ handleHeader opts s
+  (rF, s') <- fromEffect $ handleHeader opts s
   Streamly.map (parse . useRowFilter rF . Frames.tokenizeRow (framesParserOptionsForTokenizing opts)) s'
   where
     parse = Frames.readRec
@@ -686,6 +690,14 @@ streamTable
 streamTable = streamTableOpt defaultParser
 {-# INLINEABLE streamTable #-}
 
+fromEffect :: (Monad m, IsStream t) => m a -> t m a
+#if MIN_VERSION_streamly(0,8,0)
+fromEffect = Streamly.fromEffect
+#else
+fromEffect = Streamly.yieldM
+#endif
+{-# INLINE fromEffect #-}
+
 -- | Convert a stream of lines of 'Text' `Word8` to a table,
 -- dropping rows where any field fails to parse.
 -- NB:  If the inferred/given @rs@ is different from the actual file row-type, things will go awry.
@@ -701,7 +713,7 @@ streamTableOpt
     -> Streamly.SerialT m T.Text  -- ^ stream of 'Text' rows
     -> t m (Frames.Record rs) -- ^ stream of Records
 streamTableOpt opts s = do
-  (rF, s') <- Streamly.fromEffect $ handleHeader opts s
+  (rF, s') <- fromEffect $ handleHeader opts s
   Streamly.mapMaybe (mRec rF) s'
   where
     mRec rf x = recMaybe $! doParse $! useRowFilter rf $! Frames.tokenizeRow (framesParserOptionsForTokenizing opts) x
