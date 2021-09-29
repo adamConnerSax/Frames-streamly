@@ -91,6 +91,8 @@ module Frames.Streamly.CSV
 
     , streamParsed
     , streamParsedMaybe
+     -- * Exceptions
+    , FramesCSVException(..)
     )
 where
 
@@ -122,7 +124,7 @@ import qualified Streamly.Internal.Data.Unfold          as Streamly.Unfold
 import           Control.Monad.Catch                     ( MonadThrow(..),MonadCatch )
 
 import Language.Haskell.TH.Syntax (Lift)
-import qualified Data.Map as Map
+--import qualified Data.Map as Map
 import qualified Data.Set as Set
 
 import qualified Data.Strict.Either as Strict
@@ -140,11 +142,13 @@ import qualified Frames.ColumnTypeable                  as Frames
 import qualified Data.Vinyl as V
 import qualified Data.Vinyl.Functor as V (Compose(..), (:.))
 import GHC.TypeLits (KnownSymbol)
+--import GHC.Base (maskAsyncExceptions)
 
 data FramesCSVException =
   EmptyStreamException
-  | MissingHeadersException [Text]
-  | BadHeaderException Text deriving Show
+  | MissingHeadersException [ICSV.HeaderText]
+  | BadHeaderException Text
+  | WrongNumberColumnsException Text deriving Show
 
 instance Exception FramesCSVException
 
@@ -153,7 +157,6 @@ data ParserOptions = ParserOptions
     columnSelector :: ICSV.ParseColumnSelector
   , columnSeparator :: Frames.Separator
   , quotingMode :: Frames.QuotingMode
---  , includedHeaders :: Maybe HeaderList
   } deriving Lift
 
 
@@ -561,11 +564,13 @@ streamTableEither
 streamTableEither = streamTableEitherOpt defaultParser
 {-# INLINEABLE streamTableEither #-}
 
--- | Convert a stream of lines of `Text` to records.
--- Each field is returned in an @Either Text@ functor. @Right a@ for successful parses
--- and @Left Text@ when parsing fails, containing the text that failed to Parse.
---
 
+-- | Various parsing options have to handle the header line, if it exists,
+-- differently.  This function pulls all that logic into one place.
+-- We take the 'ParserOptions' and the stream of un-tokenized 'Text' lines
+-- and do whatever is required, checking for various errors
+-- (empty stream, missing headers, wrong number of columns when using positions for typing/naming)
+-- along the way.
 handleHeader :: forall m t.(IsStream t
                            , MonadThrow m)
              => ParserOptions
@@ -574,33 +579,47 @@ handleHeader :: forall m t.(IsStream t
 handleHeader opts s = case columnSelector opts of
   ICSV.ParseAll True -> return (Nothing, dropFirst s)
   ICSV.ParseAll False ->  return (Nothing, Streamly.adapt s)
-  ICSV.ParseIgnoringHeader cs -> return (Just $ csToBool <$> cs, dropFirst s)
-  ICSV.ParseWithoutHeader cs -> return (Just $ csToBool <$> cs, Streamly.adapt s)
-  ICSV.ParseUsingHeader hm -> (, dropFirst s) . Just <$> boolsFromHeader hm s
+  ICSV.ParseIgnoringHeader cs -> checkNumFirstRowCols s cs >> return (Just $ csToBool <$> cs, dropFirst s)
+  ICSV.ParseWithoutHeader cs -> checkNumFirstRowCols s cs >> return (Just $ csToBool <$> cs, Streamly.adapt s)
+  ICSV.ParseUsingHeader hs -> (, dropFirst s) . Just <$> boolsFromHeader hs s
   where
     dropFirst = Streamly.adapt . Streamly.drop 1
     csToBool x = if x == ICSV.Exclude then False else True
-    boolsFromHeader :: [(ICSV.HeaderText, ICSV.ColumnState)] ->  Streamly.SerialT m T.Text -> m [Bool]
-    boolsFromHeader hm s' = do
-      let colMap = Map.fromList hm
-          boolFromColMap t = case Map.lookup t colMap of
-            Nothing -> False
-            Just cs -> csToBool cs
-      mHeaders <- Streamly.head s'
-      headers <- ICSV.HeaderText
-                 <<$>> maybe
-                      (throwM EmptyStreamException)
-                      (return . Frames.tokenizeRow (framesParserOptionsForTokenizing opts))
-                      mHeaders
-      let headerSet = Set.fromList headers
-          missingGiven t = if t `Set.member` headerSet then Nothing else Just t
-          missingGivens = catMaybes $ fmap (missingGiven . fst) hm
-      unless (null missingGivens) $ throwM $ MissingHeadersException $ fmap ICSV.headerText missingGivens
-      return $ boolFromColMap <$> headers
 
+    tokenizedFirstRow :: Streamly.SerialT m T.Text -> m [Text]
+    tokenizedFirstRow s' = Streamly.head s' >>= (maybe
+                                                 (throwM EmptyStreamException)
+                                                 (return . Frames.tokenizeRow (framesParserOptionsForTokenizing opts)))
 
+    boolsFromHeader :: [ICSV.HeaderText] ->  Streamly.SerialT m T.Text -> m [Bool]
+    boolsFromHeader hs s' = do
+      let headersToInclude = Set.fromList hs
+          includeHeader t = t `Set.member` headersToInclude
+      fileHeaders <- ICSV.HeaderText <<$>> tokenizedFirstRow s'
+      let fileHeadersS = Set.fromList fileHeaders
+          notPresentM t = if t `Set.member` fileHeadersS then Nothing else Just t
+          missingIncluded = catMaybes $ fmap notPresentM hs
+      unless (null missingIncluded) $ throwM $ MissingHeadersException missingIncluded
+      let bools = includeHeader <$> fileHeaders
+      return bools
 
+    checkNumFirstRowCols :: Streamly.SerialT m T.Text -> [ICSV.ColumnState] -> m ()
+    checkNumFirstRowCols s' cs = tokenizedFirstRow s' >>= checkSameLength cs
 
+    checkSameLength :: [ICSV.ColumnState] -> [b] -> m ()
+    checkSameLength givenCSs streamCols = do
+      let nGiven = length givenCSs
+          nStreamCols = length streamCols
+          errMsg = "Number of given columns from type generation (" <> show nGiven
+                   <> ") doesn't match the number of columns in the parsed file ("
+                   <> show nStreamCols <> ")"
+      when (nGiven /= nStreamCols) $ throwM $ WrongNumberColumnsException errMsg
+      return ()
+
+-- | Convert a stream of lines of `Text` to records.
+-- Each field is returned in an @Either Text@ functor. @Right a@ for successful parses
+-- and @Left Text@ when parsing fails, containing the text that failed to Parse.
+--
 -- NB:  If the inferred/given @rs@ is different from the actual file row-type, things will..go awry.
 streamTableEitherOpt
     :: forall rs t m.
@@ -829,7 +848,7 @@ readColHeaders rgColHandler = evalStateT $ do
       allHeaders <- ICSV.HeaderText <<$>> (draw >>= maybe err return)
       let allColStates = f <$> allHeaders
           allBools = csToBool <$> allColStates
-          includedNames = ICSV.includedNames allColStates
+          includedNames = ICSV.includedColTypeNames allColStates
           parseColHeader = ICSV.colStatesAndHeadersToParseColHandler allColStates allHeaders
       return (includedNames, parseColHeader, Just allBools)
     ICSV.GenIgnoringHeader f -> do
@@ -837,7 +856,7 @@ readColHeaders rgColHandler = evalStateT $ do
       let allIndexes = fst $ unzip $ zip [0..] allHeaders
           allColStates = f <$> allIndexes
           allBools = csToBool <$> allColStates
-          includedNames = ICSV.includedNames allColStates
+          includedNames = ICSV.includedColTypeNames allColStates
           parseColHeader = ICSV.ParseIgnoringHeader allColStates
       return (includedNames, parseColHeader, Just allBools)
     ICSV.GenWithoutHeader f -> do
@@ -845,14 +864,14 @@ readColHeaders rgColHandler = evalStateT $ do
       let allIndexes = fst $ unzip $ zip [0..] sampleRow
           allColStates = f <$> allIndexes
           allBools = csToBool <$> allColStates
-          includedNames = ICSV.includedNames allColStates
+          includedNames = ICSV.includedColTypeNames allColStates
           parseColHeader = ICSV.ParseWithoutHeader allColStates
       return (includedNames, parseColHeader, Just allBools)
 
   colTypes <- prefixInference rF
   unless (length headerRow == length colTypes) errNumColumns
   return (zip headerRow colTypes, pch)
-  where err :: StreamState Streamly.SerialT m [Text] [Text]  = lift $ throwM EmptyStreamException --"Empty Producer has no header row"
+  where err :: StreamState Streamly.SerialT m [Text] [Text]  = lift $ throwM EmptyStreamException
         errNumColumns =
           lift
           $ throwM

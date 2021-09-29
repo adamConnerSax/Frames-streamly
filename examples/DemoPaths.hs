@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE DataKinds #-}
 --{-# LANGUAGE TypeApplications #-}
 
 module DemoPaths where
@@ -18,9 +19,9 @@ thPath x = "./example_data/" ++ x
 usePath :: FilePath -> IO FilePath
 usePath x =  fmap (\dd -> dd ++ "/" ++ x) Paths.getDataDir
 
-ffColSubsetRowGen :: FStreamly.RowGen Text Frames.CommonColumns
-ffColSubsetRowGen = (FStreamly.rowGen (thPath forestFiresPath))
-                    {
-                      FStreamly.columnHandler = FStreamly.columnSubset (Set.fromList ["X","Y","month","day","temp","wind"]) FStreamly.allColumnsAsNamed
-                    , FStreamly.rowTypeName = "FFColSubset"
-                    }
+ffColSubsetRowGen :: FStreamly.RowGen 'FStreamly.ColumnByName Frames.CommonColumns
+ffColSubsetRowGen = FStreamly.modifyColumnSelector modSelector rowGen
+  where
+    rowTypeName = "FFColSubset"
+    rowGen = (FStreamly.rowGen (thPath forestFiresPath)) { FStreamly.rowTypeName = rowTypeName }
+    modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])

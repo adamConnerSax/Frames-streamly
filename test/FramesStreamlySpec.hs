@@ -29,12 +29,34 @@ FStreamly.tableTypes' Paths.ffIgnoreHeaderChooseNamesRowGen
 -- 1. Test renameSome
 -- 2. Test different files with shared chosen columnNames
 
+emptyStreamSelector :: Selector FStreamly.FramesCSVException
+emptyStreamSelector FStreamly.EmptyStreamException = True
+emptyStreamSelector _ = False
+
+missingHeadersSelector :: Selector FStreamly.FramesCSVException
+missingHeadersSelector (FStreamly.MissingHeadersException _) = True
+missingHeadersSelector _ = False
+
+badHeaderSelector :: Selector FStreamly.FramesCSVException
+badHeaderSelector (FStreamly.BadHeaderException _) = True
+badHeaderSelector _ = False
+
+wrongNumberColumnsSelector :: Selector FStreamly.FramesCSVException
+wrongNumberColumnsSelector (FStreamly.WrongNumberColumnsException _) = True
+wrongNumberColumnsSelector _ = False
+
+
+
+
 spec :: Spec
 spec = do
   forestFiresPath <- runIO $ Paths.usePath Paths.forestFiresPath
   forestFiresNoHeaderPath <- runIO $ Paths.usePath Paths.forestFiresNoHeaderPath
+  forestFiresFewerColsPath <- runIO $ Paths.usePath Paths.forestFiresFewerColsPath
+
   forestFires :: Frames.Frame ForestFires <- runIO $ FStreamly.inCoreAoS $ FStreamly.readTableOpt forestFiresParser forestFiresPath
   forestFiresColSubset :: Frames.Frame FFColSubset <- runIO $ FStreamly.inCoreAoS $ FStreamly.readTableOpt fFColSubsetParser forestFiresPath
+  forestFiresFewerCols :: Frames.Frame FFColSubset <- runIO $ FStreamly.inCoreAoS $ FStreamly.readTableOpt fFColSubsetParser forestFiresFewerColsPath
   forestFiresRenameDay :: Frames.Frame FFRenameDay <- runIO $ FStreamly.inCoreAoS $ FStreamly.readTableOpt fFColSubsetParser forestFiresPath
   forestFiresNoHeader :: Frames.Frame FFNoHeader <- runIO $ FStreamly.inCoreAoS $ FStreamly.readTableOpt fFNoHeaderParser forestFiresNoHeaderPath
   forestFiresIgnoreHeader :: Frames.Frame FFIgnoreHeader <- runIO $ FStreamly.inCoreAoS $ FStreamly.readTableOpt fFIgnoreHeaderParser forestFiresPath
@@ -53,7 +75,11 @@ spec = do
       it "generate types from each header and rcast to drop columns or load only that column subset.  Those should be the same" $
         let rcasted :: Frames.FrameRec [X, Y, Month, Day, Temp, Wind] = fmap Frames.rcast forestFires
         in rcasted == forestFiresColSubset
+      it "parse a file with different columsn as long as the required subset is present. This should be the same as the full file" $
+        forestFiresColSubset == forestFiresFewerCols
       it "generate types from column numbers rather than headers.  Also from column numbers when there is no header.  Those should be the same." $
         forestFiresNoHeader == forestFiresIgnoreHeader
       it "generate named types for columns chosen by col number.  In this case, should match col subset after renaming Day to DayOfWeek" $
         forestFiresIgnoreHeaderChooseNames == forestFiresRenameDay
+      it "throw an exception when parsing (ignoring or absent a header line) a file with the wrong number of columns" $ do
+        (FStreamly.inCoreAoS $ FStreamly.readTableOpt @(Frames.RecordColumns ForestFires) fFIgnoreHeaderParser forestFiresFewerColsPath) `shouldThrow` wrongNumberColumnsSelector

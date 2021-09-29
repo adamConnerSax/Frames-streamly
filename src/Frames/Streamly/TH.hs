@@ -192,6 +192,14 @@ modifyColumnSelector f rg =
   in rg { Frames.Streamly.TH.columnHandler = newColHandler }
 {-# INLINEABLE modifyColumnSelector #-}
 
+-- | Update or replace the columnHandler in a RowGen
+modifyRowTypeNameAndColumnSelector :: Text -> (ICSV.RowGenColumnSelector a -> ICSV.RowGenColumnSelector b) -> RowGen a x -> RowGen b x
+modifyRowTypeNameAndColumnSelector newRowName f rg =
+  let newColHandler = f (Frames.Streamly.TH.columnHandler rg)
+  in rg { rowTypeName = T.unpack newRowName, Frames.Streamly.TH.columnHandler = newColHandler }
+{-# INLINEABLE modifyRowTypeNameAndColumnSelector #-}
+
+
 -- | Default Column Handler. Declare one type per column.
 -- Use the header to generate names.
 allColumnsAsNamed :: ICSV.RowGenColumnSelector 'ColumnByName
@@ -327,25 +335,22 @@ tableTypesText' :: forall a b c.
                    (c ~ CoRec ColInfo a, ColumnTypeable c, Monoid c)
                 => RowGen b a -> DecsQ
 tableTypesText' RowGen {..} = do
-  (colNames, pch) <- runIO $ case columnHandler of
-    ICSV.GenUsingHeader f -> do
-      allHeaders <- fmap ICSV.HeaderText <$> colNamesP (lineReader separator)
-      let allColStates = f <$> allHeaders
-          cNames = ICSV.colStatesToColNames allColStates
-          pch = ICSV.colStatesAndHeadersToParseColHandler allColStates allHeaders
-      return (cNames, pch)
-    ICSV.GenIgnoringHeader f -> do
-      allHeaders <- fmap ICSV.HeaderText <$> colNamesP (lineReader separator)
-      let allIndexes = fst $ unzip $ zip [0..] allHeaders
-          allColStates = f <$> allIndexes
-          cNames = ICSV.colStatesToColNames allColStates
-      return (cNames, ICSV.ParseIgnoringHeader allColStates)
-    ICSV.GenWithoutHeader f -> do
-      exampleRow <-  colNamesP (lineReader separator)
-      let allIndexes = fst $ unzip $ zip [0..] exampleRow
-          allColStates = f <$> allIndexes
-          cNames = ICSV.colStatesToColNames allColStates
-      return (cNames, ICSV.ParseWithoutHeader allColStates)
+  firstRow <- runIO $ colNamesP (lineReader separator)
+  let (allColStates, pch) = case columnHandler of
+        ICSV.GenUsingHeader f ->
+          let allHeaders = ICSV.HeaderText <$> firstRow
+              allColStates' = f <$> allHeaders
+          in (allColStates', ICSV.colStatesAndHeadersToParseColHandler allColStates' allHeaders)
+        ICSV.GenIgnoringHeader f ->
+          let allHeaders = ICSV.HeaderText <$> firstRow
+              allIndexes = fst $ unzip $ zip [0..] allHeaders
+              allColStates' = f <$> allIndexes
+          in (allColStates', ICSV.ParseIgnoringHeader allColStates')
+        ICSV.GenWithoutHeader f ->
+          let allIndexes = fst $ unzip $ zip [0..] firstRow
+              allColStates' = f <$> allIndexes
+          in (allColStates', ICSV.ParseWithoutHeader allColStates')
+      colNames = ICSV.includedColTypeNames allColStates
 
   let opts = ParserOptions pch separator (RFC4180Quoting '\"')
   let colNamesT = zip (fmap ICSV.colTypeName colNames) (repeat (ConT ''T.Text))

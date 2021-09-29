@@ -10,10 +10,14 @@ import qualified Data.Map as Map
 import qualified  Data.Text as T
 
 forestFiresPath :: FilePath
-forestFiresPath = "forestfires.csv"
+forestFiresPath = "forestFires.csv"
 
 forestFiresNoHeaderPath :: FilePath
-forestFiresNoHeaderPath = "ForestFiresNoHeader.csv"
+forestFiresNoHeaderPath = "forestFiresNoHeader.csv"
+
+forestFiresFewerColsPath :: FilePath
+forestFiresFewerColsPath = "forestFiresFewerCols.csv"
+
 
 thPath :: FilePath -> FilePath
 thPath x = "./example_data/" ++ x
@@ -29,8 +33,7 @@ ffColSubsetRowGen = FStreamly.modifyColumnSelector modSelector rowGen
     modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
 
 ffRenameDayRowGen :: FStreamly.RowGen 'FStreamly.ColumnByName Frames.CommonColumns
-ffRenameDayRowGen = FStreamly.modifyColumnSelector modSelector rg where
-  rg = ffColSubsetRowGen { FStreamly.rowTypeName = "FFRenameDay"}
+ffRenameDayRowGen = FStreamly.modifyRowTypeNameAndColumnSelector "FFRenameDay" modSelector ffColSubsetRowGen where
   modSelector = FStreamly.renameSome (Map.fromList [(FStreamly.HeaderText "day", FStreamly.ColTypeName "DayOfWeek")])
 
 ffNoHeaderRowGen :: FStreamly.RowGen 'FStreamly.ColumnByPosition Frames.CommonColumns
