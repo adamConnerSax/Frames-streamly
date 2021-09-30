@@ -460,7 +460,7 @@ readTableMaybe
     , IsStream t
     , Monad (t m)
     , Vinyl.RMap rs
-    , Frames.ReadRec rs)
+    , StrictReadRec rs)
     => FilePath -- ^ file path
     -> t m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Maybe :. ElField@ records after parsing.
 readTableMaybe = readTableMaybeOpt defaultParser
@@ -476,7 +476,7 @@ readTableMaybeOpt
     , IsStream t
     , Monad (t m)
     , Vinyl.RMap rs
-    , Frames.ReadRec rs)
+    , StrictReadRec rs)
     => ParserOptions -- ^ parsing options
     -> FilePath -- ^ file path
     -> t m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Maybe :. ElField@ records after parsing.
@@ -495,7 +495,7 @@ readTableEither
      , IsStream t
      , Monad (t m)
      , Vinyl.RMap rs
-     , Frames.ReadRec rs)
+     , StrictReadRec rs)
   => FilePath -- ^ file path
   -> t m (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Either :. ElField@ records after parsing.
 readTableEither = readTableEitherOpt defaultParser
@@ -511,7 +511,7 @@ readTableEitherOpt
      , IsStream t
      , Monad (t m)
      , Vinyl.RMap rs
-     , Frames.ReadRec rs)
+     , StrictReadRec rs)
   => ParserOptions -- ^ parsing options
   -> FilePath -- ^ file path
   -> t m (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Either :. ElField@ records after parsing.
@@ -562,7 +562,7 @@ streamTableEither
     , IsStream t
     , Monad (t m)
     , Vinyl.RMap rs
-    , Frames.ReadRec rs)
+    , StrictReadRec rs)
     => Streamly.SerialT m T.Text -- ^ stream of 'Text' rows
     -> t m (Vinyl.Rec ((Either T.Text) Vinyl.:. Vinyl.ElField) rs) -- ^ stream of parsed @Either :. ElField@ rows
 streamTableEither = streamTableEitherOpt defaultParser
@@ -631,15 +631,15 @@ streamTableEitherOpt
     , IsStream t
     , Monad (t m)
     , Vinyl.RMap rs
-    , Frames.ReadRec rs)
+    , StrictReadRec rs)
     => ParserOptions -- ^ parsing options
     -> Streamly.SerialT m T.Text -- ^ stream of 'Text' rows
     -> t m (Vinyl.Rec ((Either T.Text) Vinyl.:. Vinyl.ElField) rs)  -- ^ stream of parsed @Either :. ElField@ rows
 streamTableEitherOpt opts s = do
   (rF, s') <- fromEffect $ handleHeader opts s
-  Streamly.map (parse . useRowFilter rF . Frames.tokenizeRow (framesParserOptionsForTokenizing opts)) s'
+  Streamly.map (recUnStrictEither . parse . useRowFilter rF . Frames.tokenizeRow (framesParserOptionsForTokenizing opts)) s'
   where
-    parse = Frames.readRec
+    parse = strictReadRec
 {-# INLINEABLE streamTableEitherOpt #-}
 
 -- | Convert a stream of lines of `Text` to a table.
@@ -651,7 +651,7 @@ streamTableMaybe
     , IsStream t
     , Monad (t m)
     , Vinyl.RMap rs
-    , Frames.ReadRec rs)
+    , StrictReadRec rs)
     => Streamly.SerialT m T.Text -- ^ stream of 'Text' rows
     -> t m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of parsed @Maybe :. ElField@ rows
 streamTableMaybe = streamTableMaybeOpt defaultParser
@@ -666,7 +666,7 @@ streamTableMaybeOpt
     , IsStream t
     , Monad (t m)
     , Vinyl.RMap rs
-    , Frames.ReadRec rs)
+    , StrictReadRec rs)
     => ParserOptions -- ^ parsing options
     -> Streamly.SerialT m T.Text -- ^ stream of 'Text' rows
     -> t m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of parsed @Maybe :. ElField@ rows
@@ -735,11 +735,12 @@ recStrictEitherToMaybe = Vinyl.rmap (Strict.either (const (Vinyl.Compose Nothing
 recEitherToStrict :: Vinyl.RMap rs => Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs -> Vinyl.Rec (Strict.Either T.Text Vinyl.:. Vinyl.ElField) rs
 recEitherToStrict = Vinyl.rmap (Vinyl.Compose . either Strict.Left Strict.Right . Vinyl.getCompose)
 --{-# INLINE recEitherToStrict #-}
+-}
 
 recUnStrictEither :: Vinyl.RMap rs => Vinyl.Rec (Strict.Either T.Text Vinyl.:. Vinyl.ElField) rs -> Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs
 recUnStrictEither = Vinyl.rmap (Vinyl.Compose . Strict.either Left Right . Vinyl.getCompose)
 --{-# INLINE recUnStrictEither #-}
--}
+
 -- | Convert a stream of Word8 to lines of `Text` by decoding as UTF8 and splitting on "\n"
 word8ToTextLines :: (IsStream t, MonadIO m) => t m Word8 -> t m T.Text
 word8ToTextLines =  Streamly.splitOnSuffix(=='\n') (toText <$> Streamly.Fold.toList)
