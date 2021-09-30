@@ -795,7 +795,7 @@ recMaybe  = rtraverse V.getCompose
 -- TH Support
 useRowFilter :: Maybe [Bool] -> [Text] -> [Text]
 useRowFilter mb = maybe id f mb where
-  f bs xs = snd <$> (filter fst $ zip bs xs)
+  f bs xs = snd <$> filter fst (zip bs xs)
 
 type StreamState t m a = StateT (t m a) m
 
@@ -830,6 +830,7 @@ foldAll step start extract = do
 
 prefixInference :: (Frames.ColumnTypeable a
                    , Monoid a
+                   , MonadThrow m
                    , Monad m)
                 =>  Maybe [Bool]
                 -> StreamState Streamly.SerialT m [T.Text] [a]
@@ -838,7 +839,7 @@ prefixInference rF = do
   rowFilterStreamState rF
 
   draw >>= \case
-    Nothing -> return []
+    Nothing -> lift $ throwM $ EmptyStreamException
     Just row1 -> foldAll
                  (\ts -> zipWith (<>) ts . inferCols)
                  (inferCols row1)
@@ -847,6 +848,7 @@ prefixInference rF = do
 
 readColHeaders :: forall a b m.
                   (Frames.ColumnTypeable a
+                  , Show (ICSV.ColumnIdType b)
                   , Monoid a
                   , Monad m
                   , MonadThrow m)
@@ -856,39 +858,42 @@ readColHeaders :: forall a b m.
 readColHeaders rgColHandler = evalStateT $ do
   let csToBool x = if x == ICSV.Exclude then False else True
   (headerRow, pch, rF) <- case rgColHandler of
-    ICSV.GenUsingHeader f -> do
+    ICSV.GenUsingHeader f mrF -> do
       allHeaders <- ICSV.HeaderText <<$>> (draw >>= maybe err return)
+      lift $ checkColumnIds mrF allHeaders
       let allColStates = f <$> allHeaders
           allBools = csToBool <$> allColStates
           includedNames = ICSV.includedColTypeNames allColStates
           parseColHeader = ICSV.colStatesAndHeadersToParseColHandler allColStates allHeaders
       return (includedNames, parseColHeader, Just allBools)
-    ICSV.GenIgnoringHeader f -> do
+    ICSV.GenIgnoringHeader f mrF -> do
       allHeaders <- draw >>= maybe err return
       let allIndexes = fst $ unzip $ zip [0..] allHeaders
-          allColStates = f <$> allIndexes
+      lift $ checkColumnIds mrF allIndexes
+      let allColStates = f  <$> allIndexes
           allBools = csToBool <$> allColStates
           includedNames = ICSV.includedColTypeNames allColStates
           parseColHeader = ICSV.ParseIgnoringHeader allColStates
       return (includedNames, parseColHeader, Just allBools)
-    ICSV.GenWithoutHeader f -> do
+    ICSV.GenWithoutHeader f mrF -> do
       sampleRow <- peek >>= maybe err return
       let allIndexes = fst $ unzip $ zip [0..] sampleRow
-          allColStates = f <$> allIndexes
+      lift $ checkColumnIds mrF allIndexes
+      let allColStates =  f <$> allIndexes
           allBools = csToBool <$> allColStates
           includedNames = ICSV.includedColTypeNames allColStates
           parseColHeader = ICSV.ParseWithoutHeader allColStates
       return (includedNames, parseColHeader, Just allBools)
 
   colTypes <- prefixInference rF
-  unless (length headerRow == length colTypes) errNumColumns
+  unless (length headerRow == length colTypes) $ errNumColumns headerRow colTypes
   return (zip headerRow colTypes, pch)
   where err :: StreamState Streamly.SerialT m [Text] [Text]  = lift $ throwM EmptyStreamException
-        errNumColumns =
+        errNumColumns hs cts =
           lift
           $ throwM
           $ BadHeaderException
-          $ unlines
+          $ (unlines
           [ ""
           , "Error parsing CSV: "
           , "  Number of columns in header differs from number of columns"
@@ -896,7 +901,16 @@ readColHeaders rgColHandler = evalStateT $ do
           , "  being present within the data itself (not just separating"
           , "  rows). If support for embedded newlines is required, "
           , "  consider using the Frames-dsv package in conjunction with"
-          , "  Frames to make use of a different CSV parser."]
+          , "  Frames to make use of a different CSV parser."])
+          <> "\nHeaders: " <> show hs <> "\nNumber ColTypes: " <> show (length cts)
+        checkColumnIds :: ICSV.MissingRequiredIdsF b -> [ICSV.ColumnIdType b] -> m ()
+        checkColumnIds mrF fileIds = do
+          let missing = mrF fileIds
+          unless (null missing)
+            $ throwM
+            $ BadHeaderException
+            $ "Required columnIds (headers or positions) are missing from file being parsed.  Missing=" <> show missing
+          return ()
 {-# INLINEABLE readColHeaders #-}
 
 streamWord8 :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m Word8

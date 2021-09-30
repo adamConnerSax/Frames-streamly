@@ -1,5 +1,6 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveLift #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# Language GADTs #-}
 {-# LANGUAGE TypeFamilies #-}
 {-|
@@ -28,35 +29,41 @@ newtype ColTypeName = ColTypeName { colTypeName :: Text } deriving (Show, Eq, Or
 
 -- | Per-column indicator of exclusion or type-name to generate when included.
 -- Isomorphic to @Maybe ColTypeName@ but clearer in use.
-data ColumnState = Exclude | Include ColTypeName deriving (Eq, Show, Lift)
+data ColumnState = Exclude | Include ColTypeName deriving (Eq, Show,Lift)
 
 -- | Type to index column selection and naming behavior
 data ColumnId = ColumnByName | ColumnByPosition
+
 
 -- | Map from 'ColumnId' type to the inhabited type used for
 -- column inclusion/exclusion and type-naming.
 type family ColumnIdType (a :: ColumnId) :: Type where
   ColumnIdType 'ColumnByName = HeaderText
   ColumnIdType 'ColumnByPosition = Int
-
-
+{-
+data RequiredColumnIds (a :: ColumnId) where
+  NoRequiredColumnIds :: RequiredColumnIds a
+  RequiredColumnIds :: Ord (ColumnIdType a) => Set (ColumnIdType a) -> RequiredColumnIds a
+-}
+type MissingRequiredIdsF (a :: ColumnId) =  [ColumnIdType a] -> [ColumnIdType a]
 -- For RowGen
 
 -- |  Type to specify how columns are selected when types are generated
 -- by tableTypes.  Types can be generated from header text or column position.
 -- This type is parameterized by that choice.
 data RowGenColumnSelector (a :: ColumnId) where
-  GenUsingHeader :: (HeaderText -> ColumnState) -> RowGenColumnSelector 'ColumnByName
-  GenIgnoringHeader :: (Int -> ColumnState) -> RowGenColumnSelector 'ColumnByPosition
-  GenWithoutHeader :: (Int -> ColumnState) -> RowGenColumnSelector 'ColumnByPosition
+  GenUsingHeader :: (HeaderText -> ColumnState)-> MissingRequiredIdsF 'ColumnByName -> RowGenColumnSelector 'ColumnByName
+  GenIgnoringHeader :: (Int -> ColumnState) -> MissingRequiredIdsF 'ColumnByPosition  -> RowGenColumnSelector 'ColumnByPosition
+  GenWithoutHeader ::  (Int -> ColumnState) ->  MissingRequiredIdsF 'ColumnByPosition -> RowGenColumnSelector 'ColumnByPosition
 
 -- | combinator to update or switch out the column selection function of a RowGenColumnSelector
 modifyColumnSelector :: RowGenColumnSelector a
                      -> ((ColumnIdType a -> ColumnState) -> (ColumnIdType a -> ColumnState))
+                     -> (MissingRequiredIdsF a -> MissingRequiredIdsF a)
                      -> RowGenColumnSelector a
-modifyColumnSelector (GenUsingHeader f) g = GenUsingHeader $ g f
-modifyColumnSelector (GenIgnoringHeader f) g = GenIgnoringHeader $ g f
-modifyColumnSelector (GenWithoutHeader f) g = GenWithoutHeader $ g f
+modifyColumnSelector (GenUsingHeader f mr) g h = GenUsingHeader (g f) (h mr)
+modifyColumnSelector (GenIgnoringHeader f mr) g h = GenIgnoringHeader (g f) (h mr)
+modifyColumnSelector (GenWithoutHeader f mr) g h = GenWithoutHeader (g f) (h mr)
 
 
 -- | Type to control how the csv parsers include/exclude columns
