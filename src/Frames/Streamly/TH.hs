@@ -17,8 +17,31 @@
 -- the individual helpers.
 module Frames.Streamly.TH
   (
-    module Frames.Streamly.TH
-  , ColumnId(..)
+    -- * Declare Individual Column Types
+    declareColumn
+  , declarePrefixedColumn
+    -- * Control Type-declarations for a table
+  , RowGen(..)
+  , rowGen
+  , rowGenCat
+  , modifyColumnSelector
+  , modifyRowTypeNameAndColumnSelector
+  , allColumnsAsNamed
+  , noHeaderColumnsNumbered
+  , prefixColumns
+  , prefixAsNamed
+  , columnSubset
+  , renamedHeaderSubset
+  , renameSomeUsingNames
+  , renameSomeUsingPositions
+  , namedColumnNumberSubset
+  , namesGiven
+    -- * Declare all necessary types for a table
+  , tableTypes
+  , tableTypes'
+  , tableTypesText'
+--  , ColumnId(..)
+    -- * Header text vs. Type name text
   , ColTypeName(..)
   , HeaderText(..)
   )
@@ -51,10 +74,6 @@ import qualified Streamly.Prelude as Streamly
 #else
 import qualified Streamly
 #endif
-
---import qualified Pipes as P
---import qualified Pipes.Prelude as P
---import qualified Pipes.Safe as P
 
 -- | Generate a column type.
 recDec :: [Type] -> Type
@@ -100,7 +119,7 @@ lowerHead = fmap aux . T.uncons
 -- | For each column, we declare a type synonym for its type, and a
 -- Proxy value of that type.
 colDec :: T.Text -> String -> T.Text
-       -> (Either (String -> Q [Dec]) Type)
+       -> Either (String -> Q [Dec]) Type
        -> Q (Type, [Dec])
 colDec prefix rowName colName colTypeGen = do
   (colTy, extraDecs) <- either colDecsHelper (pure . (,[])) colTypeGen
@@ -143,7 +162,7 @@ declarePrefixedColumn colName prefix colTypeName =
 -- The first type argument is @Text@ or @Int@ depending how columns are indexed.
 -- The second type argument is a type-level list of the possible column types.
 data RowGen (b :: ColumnId) (a :: [GHC.Type]) =
-  RowGen { columnHandler    :: ICSV.RowGenColumnSelector b
+  RowGen { genColumnSelector    :: ICSV.RowGenColumnSelector b
            -- ^ Use these column names. If empty, expect a
            -- header row in the data file to provide
            -- column names.
@@ -168,35 +187,32 @@ data RowGen (b :: ColumnId) (a :: [GHC.Type]) =
            -- separated by a 'Separator' value.
          }
 
--- -- | Shorthand for a 'Proxy' value of 'ColumnUniverse' applied to the
--- -- given type list.
--- colQ :: Name -> Q Exp
--- colQ n = [e| (Proxy :: Proxy (ColumnUniverse $(conT n))) |]
-
 -- | A default 'RowGen'. This instructs the type inference engine to
 -- get column names from the data file, use the default column
 -- separator (a comma), infer column types from the default 'Columns'
 -- set of types, and produce a row type with name @Row@.
 rowGen :: FilePath -> RowGen 'ColumnByName CommonColumns
 rowGen = RowGen allColumnsAsNamed "" defaultSep "Row" Proxy 1000 . SCSV.streamTokenized'
+{-# INLINEABLE rowGen #-}
 
 -- | Like 'rowGen', but will also generate custom data types for
 -- 'Categorical' variables with up to 8 distinct variants.
 rowGenCat :: FilePath -> RowGen 'ColumnByName CommonColumnsCat
 rowGenCat = RowGen allColumnsAsNamed "" defaultSep "Row" Proxy 1000 . SCSV.streamTokenized'
+{-# INLINEABLE rowGenCat #-}
 
 -- | Update or replace the columnHandler in a RowGen
 modifyColumnSelector :: (ICSV.RowGenColumnSelector a -> ICSV.RowGenColumnSelector b) -> RowGen a x -> RowGen b x
 modifyColumnSelector f rg =
-  let newColHandler = f (Frames.Streamly.TH.columnHandler rg)
-  in rg { Frames.Streamly.TH.columnHandler = newColHandler }
+  let newColHandler = f (genColumnSelector rg)
+  in rg { genColumnSelector = newColHandler }
 {-# INLINEABLE modifyColumnSelector #-}
 
 -- | Update or replace the columnHandler in a RowGen
 modifyRowTypeNameAndColumnSelector :: Text -> (ICSV.RowGenColumnSelector a -> ICSV.RowGenColumnSelector b) -> RowGen a x -> RowGen b x
 modifyRowTypeNameAndColumnSelector newRowName f rg =
-  let newColHandler = f (Frames.Streamly.TH.columnHandler rg)
-  in rg { rowTypeName = T.unpack newRowName, Frames.Streamly.TH.columnHandler = newColHandler }
+  let newColHandler = f (genColumnSelector rg)
+  in rg { rowTypeName = T.unpack newRowName, genColumnSelector = newColHandler }
 {-# INLINEABLE modifyRowTypeNameAndColumnSelector #-}
 
 
@@ -206,14 +222,14 @@ allColumnsAsNamed :: ICSV.RowGenColumnSelector 'ColumnByName
 allColumnsAsNamed = ICSV.GenUsingHeader (ICSV.Include . ICSV.ColTypeName . ICSV.headerText) (const [])
 {-# INLINEABLE allColumnsAsNamed #-}
 
--- | Helper for decalring column types from a file with no header.
+-- | Helper for declaring column types from a file with no header.
 noHeaderColumnsNumbered' :: ICSV.RowGenColumnSelector 'ColumnByPosition
 noHeaderColumnsNumbered' = ICSV.GenWithoutHeader (ICSV.Include . ICSV.ColTypeName . show) (const [])
 {-# INLINEABLE noHeaderColumnsNumbered' #-}
 
 -- | Use a given prefix and append the column number to generate column types for a file with no header.
 noHeaderColumnsNumbered :: Text -> ICSV.RowGenColumnSelector 'ColumnByPosition
-noHeaderColumnsNumbered prefix = prefixColumns prefix $ noHeaderColumnsNumbered'
+noHeaderColumnsNumbered prefix = prefixColumns prefix noHeaderColumnsNumbered'
 {-# INLINEABLE noHeaderColumnsNumbered #-}
 
 -- | Add a prefix to all the generated column type names.
@@ -229,12 +245,13 @@ prefixAsNamed :: Text -> ICSV.RowGenColumnSelector 'ColumnByName
 prefixAsNamed p = prefixColumns p allColumnsAsNamed
 {-# INLINEABLE prefixAsNamed #-}
 
-
 inSetButNotList :: Ord a => Set a -> [a] -> [a]
 inSetButNotList s = Set.toList . Set.difference s . Set.fromList
+{-# INLINE inSetButNotList #-}
 
 inMapKeysButNotList :: Ord a => Map a v -> [a] -> [a]
 inMapKeysButNotList m = inSetButNotList (Map.keysSet m)
+{-# INLINE inMapKeysButNotList #-}
 
 -- | Generate types for only a subset of the columns.
 -- Generated 'ParserOptions' will select the correct columns when loading.
@@ -249,9 +266,7 @@ columnSubset s rgch = ICSV.modifyColumnSelector rgch g h where
 -- Generated 'ParserOptions' will select the correct columns when loading.
 renamedHeaderSubset :: Map ICSV.HeaderText ICSV.ColTypeName -> ICSV.RowGenColumnSelector 'ColumnByName
 renamedHeaderSubset renamedS = ICSV.GenUsingHeader f mrF where
-  f x = case Map.lookup x renamedS of
-    Nothing -> ICSV.Exclude
-    Just t -> ICSV.Include t
+  f x = maybe ICSV.Exclude ICSV.Include $ Map.lookup x renamedS
   mrF = inMapKeysButNotList renamedS
 {-# INLINEABLE renamedHeaderSubset #-}
 
@@ -280,13 +295,11 @@ renameSomeUsingPositions = renameSome
 -- Generated 'ParserOptions' will select the correct columns when loading.
 namedColumnNumberSubset :: Bool -> Map Int ICSV.ColTypeName -> ICSV.RowGenColumnSelector 'ColumnByPosition
 namedColumnNumberSubset hasHeader namedS =
-  case hasHeader of
-    True -> ICSV.GenIgnoringHeader f mrF
-    False -> ICSV.GenWithoutHeader f mrF
+  if hasHeader
+    then ICSV.GenIgnoringHeader f mrF
+    else ICSV.GenWithoutHeader f mrF
   where
-    f n = case Map.lookup n namedS of
-      Nothing -> ICSV.Exclude
-      Just t -> ICSV.Include t
+    f n = maybe ICSV.Exclude ICSV.Include $ Map.lookup n namedS
     mrF = inMapKeysButNotList namedS
 {-# INLINEABLE namedColumnNumberSubset #-}
 
@@ -313,10 +326,6 @@ tableTypes :: String -> FilePath -> DecsQ
 tableTypes n fp = tableTypes' (rowGen fp) { rowTypeName = n }
 
 -- * Customized Data Set Parsing
-
--- | Inspect no more than this many lines when inferring column types.
-prefixSize :: Int
-prefixSize = 1000
 
 -- | Generate a type for a row of a table. This will be something like
 -- @Record ["x" :-> a, "y" :-> b, "z" :-> c]@.  Column type synonyms
@@ -347,18 +356,18 @@ tableTypesText' :: forall a b c.
                 => RowGen b a -> DecsQ
 tableTypesText' RowGen {..} = do
   firstRow <- runIO $ colNamesP (lineReader separator)
-  let (allColStates, pch) = case columnHandler of
+  let (allColStates, pch) = case genColumnSelector of
         ICSV.GenUsingHeader f _ ->
           let allHeaders = ICSV.HeaderText <$> firstRow
               allColStates' = f <$> allHeaders
           in (allColStates', ICSV.colStatesAndHeadersToParseColHandler allColStates' allHeaders)
         ICSV.GenIgnoringHeader f _ ->
           let allHeaders = ICSV.HeaderText <$> firstRow
-              allIndexes = fst $ unzip $ zip [0..] allHeaders
+              allIndexes = [0..(length allHeaders - 1)]
               allColStates' = f <$> allIndexes
           in (allColStates', ICSV.ParseIgnoringHeader allColStates')
         ICSV.GenWithoutHeader f _ ->
-          let allIndexes = fst $ unzip $ zip [0..] firstRow
+          let allIndexes = [0..(length firstRow - 1)]
               allColStates' = f <$> allIndexes
           in (allColStates', ICSV.ParseWithoutHeader allColStates')
       colNames = ICSV.includedColTypeNames allColStates
@@ -394,10 +403,9 @@ tableTypes' :: forall a b c.
                , Show (ICSV.ColumnIdType b))
             => RowGen b a -> DecsQ
 tableTypes' (RowGen {..}) = do
-  (typedCols, pch) <- runIO $ SCSV.readColHeaders columnHandler lineSource :: Q ([(ICSV.ColTypeName, c)], ICSV.ParseColumnSelector)
+  (typedCols, pch) <- runIO $ SCSV.readColHeaders genColumnSelector lineSource :: Q ([(ICSV.ColTypeName, c)], ICSV.ParseColumnSelector)
   (colTypes, colDecs) <- (second concat . unzip)
-                         <$> mapM (uncurry mkColDecs)
-                         (map (second colType) typedCols)
+                         <$> mapM (uncurry mkColDecs . second colType) typedCols
   let recTy = TySynD (mkName rowTypeName) [] (recDec colTypes)
       opts = ParserOptions pch separator (RFC4180Quoting '\"')
       optsName = case rowTypeName of

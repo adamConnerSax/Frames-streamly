@@ -12,7 +12,30 @@ Maintainer  : adam_conner_sax@yahoo.com
 Stability   : experimental
 
 -}
-module Frames.Streamly.Internal.CSV where
+module Frames.Streamly.Internal.CSV
+  (
+    -- * Types
+    -- ** Text Wrappers
+    HeaderText(..)
+  , ColTypeName(..)
+    -- ** Type-Level representation for Column Id
+  , ColumnState(..)
+  , ColumnId(..)
+  , ColumnIdType
+    -- ** For RowGen
+  , RowGenColumnSelector(..)
+  , MissingRequiredIdsF
+    -- **  For ParserOptions
+  , ParseColumnSelector(..)
+  -- * Combinators
+  -- ** Building RowGen Column Selectors
+  , modifyColumnSelector
+  -- ** Building ParserOptions from RowGen and File
+  , includedHeaders
+  , includedColTypeNames
+  , colStatesAndHeadersToParseColHandler
+  )
+where
 
 import Language.Haskell.TH.Syntax (Lift)
 
@@ -40,11 +63,7 @@ data ColumnId = ColumnByName | ColumnByPosition
 type family ColumnIdType (a :: ColumnId) :: Type where
   ColumnIdType 'ColumnByName = HeaderText
   ColumnIdType 'ColumnByPosition = Int
-{-
-data RequiredColumnIds (a :: ColumnId) where
-  NoRequiredColumnIds :: RequiredColumnIds a
-  RequiredColumnIds :: Ord (ColumnIdType a) => Set (ColumnIdType a) -> RequiredColumnIds a
--}
+
 type MissingRequiredIdsF (a :: ColumnId) =  [ColumnIdType a] -> [ColumnIdType a]
 -- For RowGen
 
