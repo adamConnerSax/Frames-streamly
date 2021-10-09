@@ -13,6 +13,9 @@ import  Data.Text (Text)
 forestFiresPath :: FilePath
 forestFiresPath = "forestfires.csv"
 
+cesPath :: FilePath
+cesPath = "CES_short.csv"
+
 thPath :: FilePath -> FilePath
 thPath x = "./example_data/" ++ x
 
@@ -25,3 +28,35 @@ ffColSubsetRowGen = FStreamly.modifyColumnSelector modSelector rowGen
     rowTypeName = "FFColSubset"
     rowGen = (FStreamly.rowGen (thPath forestFiresPath)) { FStreamly.rowTypeName = rowTypeName }
     modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
+
+cesCols :: Set.Set FStreamly.HeaderText
+cesCols = Set.fromList (FStreamly.HeaderText <$> ["year"
+                                                 , "case_id"
+                                                 , "weight"
+                                                 , "weight_cumulative"
+                                                 , "st"
+                                                 , "dist_up"
+                                                 , "gender"
+                                                 , "age"
+                                                 , "educ"
+                                                 , "race"
+                                                 , "hispanic"
+                                                 , "pid3"
+                                                 , "pid7"
+                                                 , "pid3_leaner"
+                                                 , "vv_regstatus"
+                                                 , "vv_turnout_gvm"
+                                                 , "voted_rep_party"
+                                                 , "voted_pres_08"
+                                                 , "voted_pres_12"
+                                                 , "voted_pres_16"
+                                                 , "voted_pres_20"
+                                                 ])
+
+cesRowGenAllCols = (FStreamly.rowGen (thPath cesPath)) { FStreamly.tablePrefix = "CCES"
+                                                       , FStreamly.separator   = ","
+                                                       , FStreamly.rowTypeName = "CCES"
+                                                       }
+
+cesRowGen = FStreamly.modifyColumnSelector colSubset cesRowGenAllCols where
+  colSubset = FStreamly.columnSubset cesCols

@@ -3,6 +3,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Main where
 
@@ -13,6 +14,7 @@ import qualified Frames.Streamly.InCore as FStreamly
 import qualified Frames.Streamly.Transform as FStreamly
 import qualified Frames.Streamly.TH as FStreamly
 import qualified Data.Vinyl as V
+import qualified Data.Vinyl.Functor as V
 import qualified Text.Printf as Printf
 import qualified Streamly.Prelude as Streamly
 import Data.Text (Text) -- for Frames template splicing
@@ -20,9 +22,11 @@ import qualified Data.Text as Text
 
 import qualified Control.Foldl as FL
 import Data.List (intercalate)
+import DemoPaths (cesPath)
 
 FStreamly.tableTypes "ForestFires" (Paths.thPath Paths.forestFiresPath)
 FStreamly.tableTypes' Paths.ffColSubsetRowGen
+FStreamly.tableTypes' Paths.cesRowGen
 
 main :: IO ()
 main = do
@@ -42,7 +46,11 @@ main = do
               V.:& V.RNil
       csvTextStream = FStreamly.streamSV' formatRow "," $ Streamly.fromFoldable forestFires'
       csvTextStreamCS = FStreamly.streamSV' formatRow "," $ Streamly.fromFoldable forestFiresColSubset'
-  putStrLn $ intercalate "\n" $ fmap show $ FL.fold FL.list forestFiresColSubset'
+--  putStrLn $ intercalate "\n" $ fmap show $ FL.fold FL.list forestFiresColSubset'
   Streamly.toList csvTextStream >>= putStrLn . Text.unpack . Text.intercalate "\n"
   FStreamly.writeLines "exampleOut.csv" csvTextStream
   FStreamly.writeLines "exampleOutCS.csv" csvTextStreamCS
+  cesPath <- Paths.usePath Paths.cesPath
+  let s = FStreamly.readTableEitherOpt cCESParser cesPath
+  cesE :: [V.Rec (Either Text V.:. V.ElField) (Frames.RecordColumns CCES)] <- Streamly.toList s
+  putStrLn $ intercalate "\n" $ fmap show $ FL.fold FL.list cesE
