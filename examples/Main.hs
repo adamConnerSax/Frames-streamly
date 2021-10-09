@@ -28,6 +28,11 @@ FStreamly.tableTypes "ForestFires" (Paths.thPath Paths.forestFiresPath)
 FStreamly.tableTypes' Paths.ffColSubsetRowGen
 FStreamly.tableTypes' Paths.cesRowGen
 
+FStreamly.declareColumnType "MDay" [t|Maybe Text|]
+FStreamly.declareColumnType "MWind" [t|Maybe Int|]
+
+type FFMRow = [X,Y,Month, MDay, Temp, MWind]
+
 main :: IO ()
 main = do
   forestFiresPath <- Paths.usePath Paths.forestFiresPath
@@ -46,11 +51,14 @@ main = do
               V.:& V.RNil
       csvTextStream = FStreamly.streamSV' formatRow "," $ Streamly.fromFoldable forestFires'
       csvTextStreamCS = FStreamly.streamSV' formatRow "," $ Streamly.fromFoldable forestFiresColSubset'
+
 --  putStrLn $ intercalate "\n" $ fmap show $ FL.fold FL.list forestFiresColSubset'
   Streamly.toList csvTextStream >>= putStrLn . Text.unpack . Text.intercalate "\n"
   FStreamly.writeLines "exampleOut.csv" csvTextStream
   FStreamly.writeLines "exampleOutCS.csv" csvTextStreamCS
-  cesPath <- Paths.usePath Paths.cesPath
-  let s = FStreamly.readTableEitherOpt cCESParser cesPath
-  cesE :: [V.Rec (Either Text V.:. V.ElField) (Frames.RecordColumns CCES)] <- Streamly.toList s
-  putStrLn $ intercalate "\n" $ fmap show $ FL.fold FL.list cesE
+  forestFiresMissingPath <- Paths.usePath Paths.forestFiresMissingPath
+  -- try to load with ordinary row
+  let tableLength = FL.fold FL.length
+  forestFiresMissing :: Frames.Frame FFColSubset <- FStreamly.inCoreAoS $ FStreamly.readTableOpt fFColSubsetParser forestFiresPath
+  putStrLn $ "Loaded table with missing data using inferred row from complete table. Complete table has "
+    <> show (tableLength forestFires)

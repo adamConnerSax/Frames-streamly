@@ -19,6 +19,7 @@ module Frames.Streamly.TH
   (
     -- * Declare Individual Column Types
     declareColumn
+  , declareColumnType
   , declarePrefixedColumn
   , declarePrefixedColumnType
     -- * Control Type-declarations for a table
@@ -41,7 +42,7 @@ module Frames.Streamly.TH
   , tableTypes
   , tableTypes'
   , tableTypesText'
---  , ColumnId(..)
+  , ColumnId(..)
     -- * Header text vs. Type name text
   , ColTypeName(..)
   , HeaderText(..)
@@ -140,6 +141,18 @@ colDec prefix rowName colName colTypeGen = do
 -- @type X2 = "x2" :-> Double@ and a lens @x2@.
 declareColumn :: T.Text -> Name -> DecsQ
 declareColumn = flip declarePrefixedColumn T.empty
+
+-- | Splice for manually declaring a column of a given type. Works
+-- like 'declareColumn', but uses a quote for the payload type
+-- rather than a specific 'Name'. This lets you declare a column with
+-- a type like, @Maybe Int@, where @Maybe Int@ is a 'Type' but not a
+-- 'Name'. For example, with @-XOverloadedStrings@ and
+-- @-XQuasiQuotes@,
+--
+-- > declareColumnType "x2" [t|Maybe Int|]
+declareColumnType :: T.Text -> Q Type -> DecsQ
+declareColumnType n = declarePrefixedColumnType n T.empty
+
 
 -- | Splice for manually declaring a column of a given type in which
 -- the generated type synonym's name has a prefix applied to the

@@ -8,10 +8,12 @@ import qualified Paths_Frames_streamly as Paths
 import qualified Frames.Streamly.TH as FStreamly
 import qualified Frames.ColumnUniverse as Frames
 import qualified Data.Set as Set
-import  Data.Text (Text)
 
 forestFiresPath :: FilePath
 forestFiresPath = "forestfires.csv"
+
+forestFiresMissingPath :: FilePath
+forestFiresMissingPath = "forestfiresMissing.csv"
 
 cesPath :: FilePath
 cesPath = "CES_short.csv"
