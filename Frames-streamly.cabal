@@ -31,6 +31,8 @@ library
       Frames.Streamly.InCore
       Frames.Streamly.Transform
       Frames.Streamly.TH
+      Frames.Streamly.ColumnTypeable
+      Frames.Streamly.ColumnUniverse
   other-modules: Frames.Streamly.Internal.CSV
   autogen-modules:
      Paths_Frames_streamly
@@ -44,6 +46,7 @@ library
     , exceptions >=0.10.0 && <0.11
     , ghc-prim >= 0.6 && < 0.8
     , primitive >=0.7 && <0.8
+    , readable >= 0.3 && <0.4
     , relude >=1.0.0 && < 1.1
     , streamly >=0.7.2 && <0.9
     , strict >= 0.4 && < 0.5
