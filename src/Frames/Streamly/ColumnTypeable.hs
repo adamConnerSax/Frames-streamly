@@ -1,5 +1,7 @@
-{-# LANGUAGE BangPatterns, DefaultSignatures, LambdaCase,
-             ScopedTypeVariables #-}
+{-# LANGUAGE AllowAmbiguousTypes, BangPatterns,
+             DefaultSignatures, FlexibleInstances,
+             LambdaCase,
+             MultiParamTypeClasses, ScopedTypeVariables #-}
 module Frames.Streamly.ColumnTypeable where
 
 import Prelude hiding (Const, Type)
@@ -89,3 +91,25 @@ instance Parseable T.Text where
 class ColumnTypeable a where
   colType :: a -> Either (String -> Q [Dec]) Type
   inferType :: T.Text -> a
+
+-- @adamConnerSax new stuff
+
+
+{-
+class CanParseAs a b where
+  canParseAs :: Bool
+  default canParseAs :: Bool
+  canParseAs = False
+
+instance CanParseAs a Text where
+  canParseAs = True
+
+instance CanParseAs Int Double where
+  canParseAs = True
+
+instance CanParseAs Int32 Double where
+  canParseAs = True
+
+instance CanParseAs Int64 Double where
+  canParseAs = True
+-}
