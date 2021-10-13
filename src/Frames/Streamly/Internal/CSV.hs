@@ -71,7 +71,7 @@ type MissingRequiredIdsF (a :: ColumnId) =  [ColumnIdType a] -> [ColumnIdType a]
 -- by tableTypes.  Types can be generated from header text or column position.
 -- This type is parameterized by that choice.
 data RowGenColumnSelector (a :: ColumnId) where
-  GenUsingHeader :: (HeaderText -> ColumnState)-> MissingRequiredIdsF 'ColumnByName -> RowGenColumnSelector 'ColumnByName
+  GenUsingHeader :: (HeaderText -> ColumnState) -> MissingRequiredIdsF 'ColumnByName -> RowGenColumnSelector 'ColumnByName
   GenIgnoringHeader :: (Int -> ColumnState) -> MissingRequiredIdsF 'ColumnByPosition  -> RowGenColumnSelector 'ColumnByPosition
   GenWithoutHeader ::  (Int -> ColumnState) ->  MissingRequiredIdsF 'ColumnByPosition -> RowGenColumnSelector 'ColumnByPosition
 

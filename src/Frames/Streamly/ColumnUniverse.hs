@@ -13,6 +13,8 @@ module Frames.Streamly.ColumnUniverse (
   , tryParseAll {-, bestRep-}
   , CanParseAs(..)
   , ParseResult(..)
+  , parseResult
+  , parseResult'
   , ColType(..)
   , addParsedCell
   , initialColType
@@ -134,25 +136,35 @@ colTHs = rpureConstrained @Parseable f where
     YesParse a -> Just $ getConst $ representableAsType (Definitely a)
 {-# INLINE colTHs #-}
 
+
 fallbackText :: ColTH
 fallbackText = Right (ConT (mkName "Text"))
 
 
--- NB: here is where we can use the SomeMissing flag to choose Maybe
 instance ( RFoldMap ts
          , RMap ts
          , RApply ts
          , RecApplicative ts
          , RPureConstrained Parseable ts) => ColumnTypeable (ColType ts) where
-  colType t = case t of
-    UnknownColType _ -> fallbackText
-    KnownColType (_,ts) ->
-      fromMaybe fallbackText $ getFirst $ rfoldMap (First . getConst) $ rapply colTHs ts where
+  colType = colTypeTH
   {-# INLINEABLE colType #-}
   inferType isMissing t = case parseResult' isMissing t of
     MissingData -> UnknownColType SomeMissing
     ParseResult x -> KnownColType (NoneMissing, x)
   {-# INLINEABLE inferType #-}
+
+
+colTypeTH :: (RecApplicative ts
+             , RFoldMap ts
+             , RApply ts
+             ,  RPureConstrained Parseable ts)
+          => ColType ts -> Either (String -> Q [Dec]) Type
+colTypeTH t =  case t of
+    UnknownColType _ -> fallbackText
+    KnownColType (_,ts) ->
+      fromMaybe fallbackText $ getFirst $ rfoldMap (First . getConst) $ rapply colTHs ts
+
+
 
 inferredToParseResult :: ColType ts -> ParseResult ts
 inferredToParseResult (UnknownColType _) = MissingData

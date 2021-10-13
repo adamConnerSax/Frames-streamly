@@ -1,7 +1,8 @@
 {-# LANGUAGE AllowAmbiguousTypes, BangPatterns,
              DefaultSignatures, FlexibleInstances,
              LambdaCase,
-             MultiParamTypeClasses, ScopedTypeVariables #-}
+             MultiParamTypeClasses, ScopedTypeVariables
+             , TemplateHaskell #-}
 module Frames.Streamly.ColumnTypeable where
 
 import Prelude hiding (Const, Type)
@@ -52,6 +53,7 @@ class Parseable a where
                         => Parsed a -> Const (Either (String -> Q [Dec]) Type) a
   representableAsType =
     const (Const (Right (ConT (mkName (show (typeRep (Proxy :: Proxy a)))))))
+
 
 -- | Discard any estimate of a parse's ambiguity.
 discardConfidence :: Parsed a -> a

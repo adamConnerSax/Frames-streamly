@@ -192,6 +192,10 @@ declarePrefixedColumnType colName prefix payloadType =
         colTypeQ = [t|$(litT . strTyLit $ T.unpack colName) :-> $payloadType|]
 
 -- * Default CSV Parsing
+data MaybeWhen = NeverMaybe -- ^ Infer column type solely from non-missing data,
+               | AlwaysMaybe -- ^ Infer column type as @Maybe a@ where @a@ is inferred from non-missing data.
+               | MaybeIfSomeMissing -- ^ Infer column type as @a@ if none is missing and @Maybe a@ otherwise.
+               deriving (Show)
 
 -- | Control how row and named column types are generated.
 -- The first type argument is @Text@ or @Int@ depending how columns are indexed.
@@ -217,29 +221,35 @@ data RowGen (b :: ColumnId) (a :: [GHC.Type]) =
          , inferencePrefix :: Int
            -- ^ Number of rows to inspect to infer a type for each
            -- column. Defaults to 1000.
+         , isMissing :: Text -> Bool
+           -- ^ Control what text is considered missing.
+           -- Defaults to @isMissing t = null t || t == "NA"@
          , lineReader :: Separator -> Streamly.SerialT IO [Text]
            -- ^ A producer of rows of ’T.Text’ values that were
            -- separated by a 'Separator' value.
          }
+
+defaultIsMissing :: Text -> Bool
+defaultIsMissing t = T.null t || t == "NA"
 
 -- | A default 'RowGen'. This instructs the type inference engine to
 -- get column names from the data file, use the default column
 -- separator (a comma), infer column types from the default 'Columns'
 -- set of types, and produce a row type with name @Row@.
 rowGen :: FilePath -> RowGen 'ColumnByName CommonColumns
-rowGen = RowGen allColumnsAsNamed "" defaultSep "Row" Proxy 1000 . SCSV.streamTokenized'
+rowGen = RowGen allColumnsAsNamed "" defaultSep "Row" Proxy 1000 defaultIsMissing . SCSV.streamTokenized'
 {-# INLINEABLE rowGen #-}
 
 -- | Like 'rowGen', but will also generate custom data types for
 -- 'Categorical' variables with up to 8 distinct variants.
 rowGenCat :: FilePath -> RowGen 'ColumnByName CommonColumnsCat
-rowGenCat = RowGen allColumnsAsNamed "" defaultSep "Row" Proxy 1000 . SCSV.streamTokenized'
+rowGenCat = RowGen allColumnsAsNamed "" defaultSep "Row" Proxy 1000 defaultIsMissing . SCSV.streamTokenized'
 {-# INLINEABLE rowGenCat #-}
 
 -- | Update or replace the columnHandler in a RowGen
-modifyColumnSelector :: (ICSV.RowGenColumnSelector a -> ICSV.RowGenColumnSelector b) -> RowGen a x -> RowGen b x
+modifyColumnSelector :: forall a b x.(ICSV.RowGenColumnSelector a -> ICSV.RowGenColumnSelector b) -> RowGen a x -> RowGen b x
 modifyColumnSelector f rg =
-  let newColHandler = f (genColumnSelector rg)
+  let newColHandler :: ICSV.RowGenColumnSelector b = f (genColumnSelector rg)
   in rg { genColumnSelector = newColHandler }
 {-# INLINEABLE modifyColumnSelector #-}
 

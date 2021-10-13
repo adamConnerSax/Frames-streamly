@@ -834,8 +834,7 @@ prefixInference :: (MonadThrow m
                 -> Maybe [Bool]
                 -> StreamState Streamly.SerialT m [T.Text] [FSCU.ColType ts]
 prefixInference isMissing rF = do
-  let -- inferCols :: V.RfoldMap [Text] -> [FSCU.ParseResult ts]
-      inferCols = fmap (FSCU.inferredToParseResult  . FSCT.inferType isMissing)
+  let inferCols = fmap (FSCU.parseResult' isMissing)
   rowFilterStreamState rF
 
   peek >>= \case
@@ -853,7 +852,7 @@ readColHeaders :: forall ts b m.
                   , MonadThrow m
                   , V.RMap ts
                   , V.RApply ts
-                  ,  V.RFoldMap ts
+                  , V.RFoldMap ts
                   , V.RecApplicative ts
                   , V.RPureConstrained FSCT.Parseable ts
                   )
