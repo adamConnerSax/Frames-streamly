@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns, CPP, ConstraintKinds, DataKinds,
+{-# LANGUAGE AllowAmbiguousTypes, BangPatterns, CPP, ConstraintKinds, DataKinds,
              DerivingVia,
              FlexibleContexts, FlexibleInstances, GADTs, InstanceSigs,
              KindSignatures, LambdaCase, MultiParamTypeClasses,
@@ -8,14 +8,19 @@
              TypeFamilies, TypeOperators, UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Frames.Streamly.ColumnUniverse (
-  CoRec, Columns, ColumnUniverse, ColInfo,
-  CommonColumns, CommonColumnsCat, parsedTypeRep
-  , tryParseAll, bestRep
+  CoRec{-, Columns, ColumnUniverse, ColInfo -}
+  , CommonColumns, CommonColumnsCat {-,  parsedTypeRep -}
+  , tryParseAll {-, bestRep-}
+  , CanParseAs(..)
+  , ParseResult(..)
+  , ColType(..)
+  , addParsedCell
+  , initialColType
+  , inferredToParseResult
 ) where
 
-import Prelude hiding (Compose(..), Type, getConst, show)
-import Text.Show (Show(..))
---import Data.Maybe (fromMaybe)
+import Prelude hiding (Compose(..), Type, getConst, show, Const(..))
+--import Text.Show (Show(..))
 #if __GLASGOW_HASKELL__ < 808
 import Data.Semigroup (Semigroup((<>)))
 #endif
@@ -23,12 +28,10 @@ import qualified Data.Text as T
 import Data.Vinyl
 import Data.Vinyl.CoRec
 import Data.Vinyl.Functor
-import Data.Vinyl.TypeLevel (RIndex, NatToInt)
+--import Data.Vinyl.TypeLevel (RIndex, NatToInt)
 import Frames.Streamly.ColumnTypeable
-import Frames.Melt (ElemOf)
 import Frames.Categorical
 import Language.Haskell.TH
-import qualified Data.Kind as Kind
 
 -- | Extract a function to test whether some value of a given type
 -- could be read from some 'T.Text'.
@@ -47,6 +50,126 @@ tryParseAll = rtraverse getCompose funs
   where funs :: Rec (((->) T.Text) :. (Maybe :. Parsed)) ts
         funs = rpureConstrained @Parseable inferParseable'
 
+-- * Common Columns
+
+-- | Common column types: 'Bool', 'Int', 'Double', 'T.Text'
+type CommonColumns = [Bool, Int, Double, T.Text]
+
+-- | Common column types including categorical types.
+type CommonColumnsCat = [Bool, Int, Double, Categorical 8, T.Text]
+
+-- | Define a set of variants that captures all possible column types.
+--type ColumnUniverse = CoRec ColInfo
+
+-- | A universe of common column variants. These are the default
+-- column types that @Frames@ can infer. See the
+-- <http://acowley.github.io/Frames/#sec-4 Tutorial> for an example of
+-- extending the default types with your own.
+--type Columns = ColumnUniverse CommonColumns
+
+-- @adamConnerSax new stuff
+data SomeMissing = SomeMissing | NoneMissing deriving (Show)
+
+instance Semigroup SomeMissing where
+  SomeMissing <> _ = SomeMissing
+  _ <> SomeMissing = SomeMissing
+  NoneMissing <> NoneMissing = NoneMissing
+
+data CanParseAs p = YesParse p | NoParse
+
+instance Functor CanParseAs where
+  fmap f (YesParse p) = YesParse (f p)
+  fmap _ NoParse = NoParse
+
+
+-- this is semigroup like but should not escape this module because of dropping rhs value
+-- so we just make it a function which we do not export
+combineCanParseAs :: CanParseAs p -> CanParseAs p -> CanParseAs p
+combineCanParseAs (YesParse x) (YesParse _) = YesParse x
+combineCanParseAs _ _ = NoParse
+
+data ParseResult ts = MissingData | ParseResult (Rec CanParseAs ts)
+
+parseResult' :: (RecApplicative ts
+                , RMap ts
+                , RApply ts
+                , RPureConstrained Parseable ts)
+             => (Text -> Bool) -> Text -> ParseResult ts
+parseResult' missingF t
+  | missingF t = MissingData
+  | otherwise = ParseResult $ recParsedToRecCanParseAs $ tryParseAll t
+{-# INLINEABLE parseResult' #-}
+
+parseResult ::  (RecApplicative ts
+                , RMap ts
+                , RApply ts
+                , RPureConstrained Parseable ts)
+                => Text -> ParseResult ts
+parseResult = parseResult' defaultMissing where
+  defaultMissing t = T.null t || t == "NA"
+{-# INLINEABLE parseResult #-}
+
+recParsedToRecCanParseAs :: RMap ts => Rec (Maybe :. Parsed) ts -> Rec CanParseAs ts
+recParsedToRecCanParseAs = rmap (parsedToCanParseAs . getCompose)
+{-# INLINEABLE recParsedToRecCanParseAs #-}
+
+parsedToCanParseAs :: Maybe (Parsed a) -> CanParseAs a
+parsedToCanParseAs Nothing = NoParse
+parsedToCanParseAs (Just x)  = YesParse $ parsedValue x
+{-# INLINE parsedToCanParseAs #-}
+
+data ColType ts = UnknownColType SomeMissing
+                | KnownColType (SomeMissing, Rec CanParseAs ts)
+
+type ColTH = Either (String -> Q [Dec]) Type
+type ColTHF = Lift (->) CanParseAs (Const (Maybe ColTH))
+
+colTHs :: (RecApplicative ts
+          , RPureConstrained Parseable ts)
+       => Rec (ColTHF) ts
+colTHs = rpureConstrained @Parseable f where
+  f :: forall a.Parseable a => ColTHF a --CanParseAs a -> (Const ColTH) a
+  f = Lift $ \x -> Const $ case x of
+    NoParse ->  Nothing
+    YesParse a -> Just $ getConst $ representableAsType (Definitely a)
+{-# INLINE colTHs #-}
+
+fallbackText :: ColTH
+fallbackText = Right (ConT (mkName "Text"))
+
+
+-- NB: here is where we can use the SomeMissing flag to choose Maybe
+instance ( RFoldMap ts
+         , RMap ts
+         , RApply ts
+         , RecApplicative ts
+         , RPureConstrained Parseable ts) => ColumnTypeable (ColType ts) where
+  colType t = case t of
+    UnknownColType _ -> fallbackText
+    KnownColType (_,ts) ->
+      fromMaybe fallbackText $ getFirst $ rfoldMap (First . getConst) $ rapply colTHs ts where
+  {-# INLINEABLE colType #-}
+  inferType isMissing t = case parseResult' isMissing t of
+    MissingData -> UnknownColType SomeMissing
+    ParseResult x -> KnownColType (NoneMissing, x)
+  {-# INLINEABLE inferType #-}
+
+inferredToParseResult :: ColType ts -> ParseResult ts
+inferredToParseResult (UnknownColType _) = MissingData
+inferredToParseResult (KnownColType (_, x)) = ParseResult x
+{-# INLINE inferredToParseResult #-}
+
+initialColType :: ColType ts
+initialColType = UnknownColType NoneMissing
+{-# INLINE initialColType #-}
+
+addParsedCell :: (RMap ts, RApply ts) => ColType ts -> ParseResult ts -> ColType ts
+addParsedCell (UnknownColType _) MissingData = UnknownColType SomeMissing
+addParsedCell (UnknownColType sm) (ParseResult pRec) = KnownColType (sm, pRec)
+addParsedCell (KnownColType (_, ctRec)) MissingData = KnownColType (SomeMissing, ctRec)
+addParsedCell (KnownColType (sm, ctRec)) (ParseResult pRec) = KnownColType (sm, rzipWith combineCanParseAs pRec ctRec)
+{-# INLINEABLE addParsedCell #-}
+{-
 -- * Column Type Inference
 
 -- | Information necessary for synthesizing row types and comparing
@@ -171,147 +294,4 @@ instance forall ts. (RPureConstrained Show ts, RecApplicative ts)
   => Show (CoRec ColInfo ts) where
   show x = "(Col " ++ onCoRec @Show show x ++")"
 #endif
-
--- * Common Columns
-
--- | Common column types: 'Bool', 'Int', 'Double', 'T.Text'
-type CommonColumns = [Bool, Int, Double, T.Text]
-
--- | Common column types including categorical types.
-type CommonColumnsCat = [Bool, Int, Double, Categorical 8, T.Text]
-
--- | Define a set of variants that captures all possible column types.
-type ColumnUniverse = CoRec ColInfo
-
--- | A universe of common column variants. These are the default
--- column types that @Frames@ can infer. See the
--- <http://acowley.github.io/Frames/#sec-4 Tutorial> for an example of
--- extending the default types with your own.
-type Columns = ColumnUniverse CommonColumns
-
-
--- @adamConnerSax new stuff
-data SomeMissing = SomeMissing | NoneMissing deriving (Show)
-
-instance Semigroup SomeMissing where
-  SomeMissing <> _ = SomeMissing
-  _ <> SomeMissing = SomeMissing
-  NoneMissing <> NoneMissing = NoneMissing
-
-data CanParseAs a = YesParse SomeMissing | NoParse SomeMissing
-
-instance Functor CanParseAs where
-  fmap _ (YesParse x) = YesParse x
-  fmap _ (NoParse x) = NoParse x
-
-instance Semigroup (CanParseAs a) where
-  YesParse x <> YesParse y = YesParse (x <> y)
-  YesParse x <> NoParse y = NoParse (x <> y)
-  NoParse x <> YesParse y = NoParse (x <> y)
-  NoParse x <> NoParse y = NoParse (x <> y)
-
-instance (RMap ts, RApply ts) => Semigroup (Rec CanParseAs ts) where
-  r1 <> r2 = rzipWith (<>) r1 r2
-
-
-newtype ParseResult ts = ParseResult (Rec CanParseAs ts)
---  deriving Semigroup via newtype
-
-instance (RMap ts, RApply ts) => Semigroup (ParseResult ts) where
-  (ParseResult x) <> (ParseResult y) = ParseResult $ x <> y
-
-instance (RMap ts, RApply ts, RecApplicative ts) => Monoid (ParseResult ts) where
-  mempty = ParseResult $ rpure (YesParse SomeMissing)
-  mappend = (<>)
-
---type ParseResult ts = Rec CanParseAs ts
-
-parseResult' :: (RecApplicative ts
-                , RMap ts
-                , RApply ts
-                , RPureConstrained Parseable ts)
-             => (Text -> Bool) -> Text -> ParseResult ts
-parseResult' missingF t
-  | missingF t == True = mempty
-  | otherwise = ParseResult $ recParsedToRecCanParseAs $ tryParseAll t
-
-parseResult ::  (RecApplicative ts
-                , RMap ts
-                , RApply ts
-                , RPureConstrained Parseable ts)
-                => Text -> ParseResult ts
-parseResult = parseResult' defaultMissing where
-  defaultMissing t = T.null t || t == "NA"
-
-
-recParsedToRecCanParseAs :: RMap ts => Rec (Maybe :. Parsed) ts -> Rec CanParseAs ts
-recParsedToRecCanParseAs = rmap (parsedToCanParseAs . getCompose)
-
-parsedToCanParseAs :: Maybe (Parsed a) -> CanParseAs a
-parsedToCanParseAs Nothing = NoParse NoneMissing
-parsedToCanParseAs (Just _)  = YesParse NoneMissing
-
-
-
-{-
-reTypeSomeMissing :: SomeMissing () -> SomeMissing a
-reTypeSomeMissing SomeMissing = SomeMissing
-reTypeSomeMissing NoneMissing = NoneMissing
--}
-
---newtype ColumnInfo a = ColumnInfo (Either (String -> Q [Dec]) Type, SomeMissing a)
-type ColType ts = Rec CanParseAs ts
-
---addParsedCell :: ColType ts -> ParseResult ts -> ColType ts
-
-
-{-
-type InferJoin :: Kind.Type -> Kind.Type -> Kind.Type
-type family InferJoin a b
-
-type instance InferJoin a a = a
-type instance (Parseable a, Parseable b) => InferJoin a b =
-
-type instance InferJoin _ Text = Text
-type instance InferJoin Text _ = Text
-type instance InferJoin _ _ = Text
--}
-{-
-inferCellInContext :: forall ts.  (FoldRec ts ts, RPureConstrained Parseable ts, ElemOf ts T.Text)
-                   => ColType ts -> ParseResult ts -> ColType ts
-inferCellInContext (UnknownColType _) MissingData = UnknownColType SomeMissing
-inferCellInContext (UnknownColType sm) (ParsedRec x) = KnownColType $ parseRecToColInfoMCoRec sm x
-inferCellInContext (KnownColType x) MissingData = KnownColType $ coRecMap f x where
-  f :: ColInfoM a -> ColInfoM a
-  f (ColInfoM (t, _)) = ColInfoM (t, SomeMissing)
-
--- We have a column with an inferred type and a parsed cell with
-inferCellInContext (KnownColType cx) (ParsedRec y) =
--}
-
-  {-
-  KnownColType $ mergeCoRecs cx (parseRecToColInfoMCoRec NoneMissing y) where
-  mergeCoRecs :: CoRec ColInfoM ts -> CoRec ColInfoM ts -> CoRec ColInfoM ts
-  mergeCoRecs crX@(CoRec (ColInfoM ) crY = fromMaybe fallbackText
-                        $ coRecTraverse getCompose (coRecMapC @Parseable aux crX)
-    where
-      fallbackText :: CoRec ColInfoM ts
-      fallbackText = CoRec @Text @ts (ColInfoM (Right (ConT (mkName "Text")), NoneMissing))
-      aux :: forall a. (Parseable a, NatToInt (RIndex a ts)) => ColInfoM a -> (Maybe :. ColInfoM) a
-      aux (ColInfoM (_, sm)) = case asA' @a crY of
-        Nothing -> Compose Nothing
-        Just ((ColInfoM (t, sm'))) -> Compose $ Just $ ColInfoM (t, sm <> sm')
--}
-{-
-parsedRecAsCoRec ::  (FoldRec ts ts, RPureConstrained Parseable ts, ElemOf ts T.Text) => Rec (Maybe :. Parsed) ts -> CoRec Parsed ts
-parsedRecAsCoRec = fromMaybe (CoRec (Possibly T.empty :: Parsed T.Text)) . firstField
-
-parsedToColInfoM :: Parseable a => SomeMissing a -> Parsed a -> ColInfoM a
-parsedToColInfoM sm x = ColInfoM (getConst $ representableAsType x, sm)
-
-parsedCoRecToColInfoM :: RPureConstrained Parseable ts => SomeMissing () -> CoRec Parsed ts -> CoRec ColInfoM ts
-parsedCoRecToColInfoM sm = coRecMapC @Parseable (parsedToColInfoM $ reTypeSomeMissing sm)
-
-parseRecToColInfoMCoRec :: (FoldRec ts ts, RPureConstrained Parseable ts, ElemOf ts T.Text) => SomeMissing () -> Rec (Maybe :. Parsed) ts -> CoRec ColInfoM ts
-parseRecToColInfoMCoRec sm = parsedCoRecToColInfoM sm . parsedRecAsCoRec
 -}

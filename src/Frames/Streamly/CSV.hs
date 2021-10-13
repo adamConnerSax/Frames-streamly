@@ -104,6 +104,8 @@ module Frames.Streamly.CSV
 where
 
 import qualified Frames.Streamly.Internal.CSV as ICSV
+import qualified Frames.Streamly.ColumnUniverse as FSCU
+import qualified Frames.Streamly.ColumnTypeable as FSCT
 
 import Prelude hiding(getCompose)
 import qualified Streamly.Prelude                       as Streamly
@@ -821,34 +823,43 @@ foldAll step start extract = do
 
 -- | Infer column types from a prefix (up to 1000 lines) of a CSV
 -- file.
-prefixInference :: (Frames.ColumnTypeable a
-                   , Monoid a
-                   , MonadThrow m
-                   , Monad m)
-                =>  Maybe [Bool]
-                -> StreamState Streamly.SerialT m [T.Text] [a]
-prefixInference rF = do
-  let inferCols = map Frames.inferType
+prefixInference :: (MonadThrow m
+                   , Monad m
+                   , V.RMap ts
+                   , V.RApply ts
+                   , V.RFoldMap ts
+                   , V.RecApplicative ts
+                   , V.RPureConstrained FSCT.Parseable ts)
+                => (Text -> Bool)
+                -> Maybe [Bool]
+                -> StreamState Streamly.SerialT m [T.Text] [FSCU.ColType ts]
+prefixInference isMissing rF = do
+  let -- inferCols :: V.RfoldMap [Text] -> [FSCU.ParseResult ts]
+      inferCols = fmap (FSCU.inferredToParseResult  . FSCT.inferType isMissing)
   rowFilterStreamState rF
 
-  draw >>= \case
+  peek >>= \case
     Nothing -> lift $ throwM $ EmptyStreamException
-    Just row1 -> foldAll
-                 (\ts -> zipWith (<>) ts . inferCols)
-                 (inferCols row1)
+    Just _ -> foldAll
+                 (\ts  -> zipWith FSCU.addParsedCell ts . inferCols)
+                 (repeat FSCU.initialColType)
                  id
 {-# INLINEABLE prefixInference #-}
 
 -- | Extract column names and inferred types from a CSV file.
-readColHeaders :: forall a b m.
-                  (Frames.ColumnTypeable a
-                  , Show (ICSV.ColumnIdType b)
-                  , Monoid a
+readColHeaders :: forall ts b m.
+                  (Show (ICSV.ColumnIdType b)
                   , Monad m
-                  , MonadThrow m)
+                  , MonadThrow m
+                  , V.RMap ts
+                  , V.RApply ts
+                  ,  V.RFoldMap ts
+                  , V.RecApplicative ts
+                  , V.RPureConstrained FSCT.Parseable ts
+                  )
                => ICSV.RowGenColumnSelector b-- headerOverride
                -> Streamly.SerialT m [Text]
-               -> m ([(ICSV.ColTypeName, a)], ICSV.ParseColumnSelector)
+               -> m ([(ICSV.ColTypeName, FSCU.ColType ts)], ICSV.ParseColumnSelector)
 readColHeaders rgColHandler = evalStateT $ do
   let csToBool =  (/= ICSV.Exclude)
   (headerRow, pch, rF) <- case rgColHandler of
@@ -878,8 +889,9 @@ readColHeaders rgColHandler = evalStateT $ do
           includedNames = ICSV.includedColTypeNames allColStates
           parseColHeader = ICSV.ParseWithoutHeader allColStates
       return (includedNames, parseColHeader, Just allBools)
+  let isMissing t = T.null t || t == "NA"
 
-  colTypes <- prefixInference rF
+  colTypes <- prefixInference isMissing rF
   unless (length headerRow == length colTypes) $ errNumColumns headerRow colTypes
   return (zip headerRow colTypes, pch)
   where err :: StreamState Streamly.SerialT m [Text] [Text]  = lift $ throwM EmptyStreamException

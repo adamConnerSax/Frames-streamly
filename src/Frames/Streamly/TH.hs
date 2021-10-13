@@ -54,6 +54,9 @@ import qualified Frames.Streamly.Internal.CSV as ICSV
 import Frames.Streamly.Internal.CSV (ColumnId(..), HeaderText(..) ,ColTypeName(..))
 import Frames.Streamly.CSV (ParserOptions(..))
 
+import qualified Frames.Streamly.ColumnUniverse as FSCU
+import qualified Frames.Streamly.ColumnTypeable as FSCT
+
 import Prelude hiding (Type, lift)
 import Data.Char (toLower)
 import qualified Data.Map as Map
@@ -428,16 +431,19 @@ tableTypesText' RowGen {..} = do
 -- the CSV file has column names \"foo\", \"bar\", and \"baz\", then
 -- this will declare @type Foo = "foo" :-> Int@, for example, @foo =
 -- rlens \@Foo@, and @foo' = rlens' \@Foo@.
-tableTypes' :: forall a b c.
-               (c ~ CoRec ColInfo a
-               , ColumnTypeable c
-               , Monoid c
+tableTypes' :: forall ts b c.
+               (c ~ FSCU.ColType ts
+               , RMap ts
+               , RApply ts
+               , RFoldMap ts
+               , RecApplicative ts
+               , RPureConstrained FSCT.Parseable ts
                , Show (ICSV.ColumnIdType b))
-            => RowGen b a -> DecsQ
+            => RowGen b ts -> DecsQ
 tableTypes' (RowGen {..}) = do
   (typedCols, pch) <- runIO $ SCSV.readColHeaders genColumnSelector lineSource :: Q ([(ICSV.ColTypeName, c)], ICSV.ParseColumnSelector)
   (colTypes, colDecs) <- (second concat . unzip)
-                         <$> mapM (uncurry mkColDecs . second colType) typedCols
+                         <$> mapM (uncurry mkColDecs . second FSCT.colType) typedCols
   let recTy = TySynD (mkName rowTypeName) [] (recDec colTypes)
       opts = ParserOptions pch separator (RFC4180Quoting '\"')
       optsName = case rowTypeName of

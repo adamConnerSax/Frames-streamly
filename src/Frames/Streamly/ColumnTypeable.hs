@@ -90,7 +90,7 @@ instance Parseable T.Text where
 -- some textual data.
 class ColumnTypeable a where
   colType :: a -> Either (String -> Q [Dec]) Type
-  inferType :: T.Text -> a
+  inferType :: (T.Text -> Bool) -> T.Text -> a
 
 -- @adamConnerSax new stuff
 
