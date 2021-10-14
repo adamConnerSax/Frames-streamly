@@ -24,6 +24,7 @@ module Frames.Streamly.Internal.CSV
   , ColumnIdType
     -- ** For RowGen
   , RowGenColumnSelector(..)
+  , MaybeWhen(..)
   , MissingRequiredIdsF
     -- **  For ParserOptions
   , ParseColumnSelector(..)
@@ -39,6 +40,14 @@ where
 
 import Language.Haskell.TH.Syntax (Lift)
 
+-- | Type to control how column type inference is handled,
+-- particularly in the presence of missing data
+data MaybeWhen = NeverMaybe -- ^ Infer column type solely from non-missing data,
+               | AlwaysMaybe -- ^ Infer column type as @Maybe a@ where @a@ is inferred from non-missing data.
+               | MaybeIfSomeMissing -- ^ Infer column type as @a@ if none is missing and @Maybe a@ otherwise.
+               deriving (Show, Eq, Lift)
+
+
 -- | Wrapper for the text value of the column header to match on in column selection
 newtype HeaderText = HeaderText { headerText :: Text } deriving (Show, Eq, Ord, Lift)
 
@@ -52,7 +61,7 @@ newtype ColTypeName = ColTypeName { colTypeName :: Text } deriving (Show, Eq, Or
 
 -- | Per-column indicator of exclusion or type-name to generate when included.
 -- Isomorphic to @Maybe ColTypeName@ but clearer in use.
-data ColumnState = Exclude | Include ColTypeName deriving (Eq, Show,Lift)
+data ColumnState = Exclude | Include (ColTypeName, MaybeWhen) deriving (Eq, Show, Lift)
 
 -- | Type to index column selection and naming behavior
 data ColumnId = ColumnByName | ColumnByPosition
@@ -102,7 +111,7 @@ includedHeaders cs hs = catMaybes $ fmap f $ zip hs cs where
 includedColTypeNames :: [ColumnState] -> [ColTypeName]
 includedColTypeNames = catMaybes . fmap f where
   f Exclude = Nothing
-  f (Include x) = Just x
+  f (Include (x, _)) = Just x
 {-# INLINEABLE includedColTypeNames #-}
 
 

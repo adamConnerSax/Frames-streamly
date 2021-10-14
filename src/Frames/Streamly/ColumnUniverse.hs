@@ -16,6 +16,8 @@ module Frames.Streamly.ColumnUniverse (
   , parseResult
   , parseResult'
   , ColType(..)
+  , colTypeTH
+  , colTypeSomeMissing
   , addParsedCell
   , initialColType
   , inferredToParseResult
@@ -164,7 +166,9 @@ colTypeTH t =  case t of
     KnownColType (_,ts) ->
       fromMaybe fallbackText $ getFirst $ rfoldMap (First . getConst) $ rapply colTHs ts
 
-
+colTypeSomeMissing :: ColType ts -> SomeMissing
+colTypeSomeMissing (UnknownColType x) = x
+colTypeSomeMissing (KnownColType (x, _)) = x
 
 inferredToParseResult :: ColType ts -> ParseResult ts
 inferredToParseResult (UnknownColType _) = MissingData

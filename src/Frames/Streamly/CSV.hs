@@ -845,6 +845,8 @@ prefixInference isMissing rF = do
                  id
 {-# INLINEABLE prefixInference #-}
 
+data ColTypeInfo ts = ColTypeInfo { colTypeName :: ICSV.ColTypeName, colMaybeWhen :: ICSV.MaybeWhen, colBaseType :: FSCU.ColType ts}
+
 -- | Extract column names and inferred types from a CSV file.
 readColHeaders :: forall ts b m.
                   (Show (ICSV.ColumnIdType b)
