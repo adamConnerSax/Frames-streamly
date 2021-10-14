@@ -27,6 +27,7 @@ import DemoPaths (cesPath)
 FStreamly.tableTypes "ForestFires" (Paths.thPath Paths.forestFiresPath)
 FStreamly.tableTypes' Paths.ffColSubsetRowGen
 FStreamly.tableTypes' Paths.cesRowGen
+FStreamly.tableTypes' Paths.ffInferMaybeRowGen
 
 FStreamly.declareColumnType "MDay" [t|Maybe Text|]
 FStreamly.declareColumnType "MWind" [t|Maybe Int|]
@@ -50,15 +51,22 @@ main = do
               V.:& FStreamly.liftFieldFormatter (Text.pack . Printf.printf "%.1f")
               V.:& V.RNil
       csvTextStream = FStreamly.streamSV' formatRow "," $ Streamly.fromFoldable forestFires'
-      csvTextStreamCS = FStreamly.streamSV' formatRow "," $ Streamly.fromFoldable forestFiresColSubset'
+--      csvTextStreamCS = FStreamly.streamSV' formatRow "," $ Streamly.fromFoldable forestFiresColSubset'
 
 --  putStrLn $ intercalate "\n" $ fmap show $ FL.fold FL.list forestFiresColSubset'
-  Streamly.toList csvTextStream >>= putStrLn . Text.unpack . Text.intercalate "\n"
+--  Streamly.toList csvTextStream >>= putStrLn . Text.unpack . Text.intercalate "\n"
   FStreamly.writeLines "exampleOut.csv" csvTextStream
-  FStreamly.writeLines "exampleOutCS.csv" csvTextStreamCS
+--  FStreamly.writeLines "exampleOutCS.csv" csvTextStreamCS
   forestFiresMissingPath <- Paths.usePath Paths.forestFiresMissingPath
   -- try to load with ordinary row
-  let tableLength = FL.fold FL.length
-  forestFiresMissing :: Frames.Frame FFColSubset <- FStreamly.inCoreAoS $ FStreamly.readTableOpt fFColSubsetParser forestFiresPath
+  let tableLength :: Foldable f => f a -> Int
+      tableLength = FL.fold FL.length
+  forestFiresMissing :: Frames.Frame FFColSubset <- FStreamly.inCoreAoS $ FStreamly.readTableOpt fFColSubsetParser forestFiresMissingPath
   putStrLn $ "Loaded table with missing data using inferred row from complete table. Complete table has "
     <> show (tableLength forestFires)
+    <> " and with missing data (1 row missing 'day' a Text entry, one missing 'wind', a Double) has "
+    <> show (tableLength forestFiresMissing)
+  forestFiresMissing2 :: [Frames.Record FFMRow] <- Streamly.toList $ FStreamly.readTableOpt fFColSubsetParser forestFiresMissingPath
+  putStrLn $ "Loaded the same table but with the types for 'day' and 'wind' (manually) set to Maybe. Has "
+    <> show (tableLength forestFiresMissing2)
+    <> " rows."

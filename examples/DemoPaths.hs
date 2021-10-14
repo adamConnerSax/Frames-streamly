@@ -6,7 +6,7 @@ module DemoPaths where
 
 import qualified Paths_Frames_streamly as Paths
 import qualified Frames.Streamly.TH as FStreamly
-import qualified Frames.ColumnUniverse as Frames
+import qualified Frames.Streamly.ColumnUniverse as FStreamly
 import qualified Data.Set as Set
 
 forestFiresPath :: FilePath
@@ -24,12 +24,24 @@ thPath x = "./example_data/" ++ x
 usePath :: FilePath -> IO FilePath
 usePath x =  fmap (\dd -> dd ++ "/" ++ x) Paths.getDataDir
 
-ffColSubsetRowGen :: FStreamly.RowGen 'FStreamly.ColumnByName Frames.CommonColumns
+ffColSubsetRowGen :: FStreamly.RowGen 'FStreamly.ColumnByName FStreamly.CommonColumns
 ffColSubsetRowGen = FStreamly.modifyColumnSelector modSelector rowGen
   where
     rowTypeName = "FFColSubset"
     rowGen = (FStreamly.rowGen (thPath forestFiresPath)) { FStreamly.rowTypeName = rowTypeName }
     modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
+
+ffInferMaybeRowGen :: FStreamly.RowGen 'FStreamly.ColumnByName FStreamly.CommonColumns
+ffInferMaybeRowGen = setMaybeWhen $ FStreamly.modifyColumnSelector modSelector rowGen
+  where
+    setMaybeWhen = FStreamly.setMaybeWhen (FStreamly.HeaderText "wind") FStreamly.MaybeIfSomeMissing
+    modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
+    rowGen = (FStreamly.rowGen (thPath forestFiresMissingPath)) {
+      FStreamly.rowTypeName = "FFInferMaybe"
+      , FStreamly.tablePrefix = "IM"
+      }
+
+
 
 cesCols :: Set.Set FStreamly.HeaderText
 cesCols = Set.fromList (FStreamly.HeaderText <$> ["year"

@@ -16,6 +16,7 @@ module Frames.Streamly.ColumnUniverse (
   , parseResult
   , parseResult'
   , ColType(..)
+  , SomeMissing(..)
   , colTypeTH
   , colTypeSomeMissing
   , addParsedCell
@@ -72,7 +73,7 @@ type CommonColumnsCat = [Bool, Int, Double, Categorical 8, T.Text]
 --type Columns = ColumnUniverse CommonColumns
 
 -- @adamConnerSax new stuff
-data SomeMissing = SomeMissing | NoneMissing deriving (Show)
+data SomeMissing = SomeMissing | NoneMissing deriving (Eq, Show)
 
 instance Semigroup SomeMissing where
   SomeMissing <> _ = SomeMissing

@@ -34,6 +34,7 @@ module Frames.Streamly.Internal.CSV
   -- ** Building ParserOptions from RowGen and File
   , includedHeaders
   , includedColTypeNames
+  , includedColTypeInfo
   , colStatesAndHeadersToParseColHandler
   )
 where
@@ -109,10 +110,16 @@ includedHeaders cs hs = catMaybes $ fmap f $ zip hs cs where
 {-# INLINEABLE includedHeaders #-}
 
 includedColTypeNames :: [ColumnState] -> [ColTypeName]
-includedColTypeNames = catMaybes . fmap f where
+includedColTypeNames = mapMaybe f where
   f Exclude = Nothing
   f (Include (x, _)) = Just x
 {-# INLINEABLE includedColTypeNames #-}
+
+includedColTypeInfo :: [ColumnState] -> [(ColTypeName, MaybeWhen)]
+includedColTypeInfo = mapMaybe f where
+  f Exclude = Nothing
+  f (Include x) = Just x
+{-# INLINEABLE includedColTypeInfo #-}
 
 
 colStatesAndHeadersToParseColHandler :: [ColumnState] -> [HeaderText] -> ParseColumnSelector

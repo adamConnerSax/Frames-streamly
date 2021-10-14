@@ -125,16 +125,19 @@ lowerHead = fmap aux . T.uncons
 
 -- | For each column, we declare a type synonym for its type, and a
 -- Proxy value of that type.
-colDec :: T.Text -> String -> T.Text
+colDec :: T.Text -> String -> T.Text -> Bool
        -> Either (String -> Q [Dec]) Type
        -> Q (Type, [Dec])
-colDec prefix rowName colName colTypeGen = do
-  (colTy, extraDecs) <- either colDecsHelper (pure . (,[])) colTypeGen
-  let colTypeQ = [t|$(litT . strTyLit $ T.unpack colName) :-> $(return colTy)|]
+colDec prefix rowName colName addMaybe colTypeGen = do
+  (colTy', extraDecs) <- either colDecsHelper (pure . (,[])) colTypeGen
+  let colTy = addMaybeToTypeIf addMaybe colTy'
+      colTypeQ = [t|$(litT . strTyLit $ T.unpack colName) :-> $(return colTy)|]
   syn <- mkColSynDec colTypeQ colTName'
   lenses <- mkColLensDec colTName' colTy colPName
   return (ConT colTName', syn : extraDecs ++ lenses)
-  where colTName = sanitizeTypeName (prefix <> capitalize1 colName)
+  where addMaybeToTypeIf :: Bool -> Type -> Type
+        addMaybeToTypeIf b t = if b then AppT (ConT ''Maybe) t else t
+        colTName = sanitizeTypeName (prefix <> capitalize1 colName)
         colPName = fromMaybe "colDec impossible" (lowerHead colTName)
         colTName' = mkName $ T.unpack colTName
         colDecsHelper f =
@@ -451,7 +454,8 @@ tableTypesText' RowGen {..} = do
           mColNm <- lookupTypeName (tablePrefix ++ safeName)
           case mColNm of
             Just n -> pure (ConT n, [])
-            Nothing -> colDec (T.pack tablePrefix) rowTypeName colNm (Right colTy)
+            Nothing -> colDec (T.pack tablePrefix) rowTypeName colNm False (Right colTy)
+
 
 -- | Generate a type for a row of a table. This will be something like
 -- @Record ["x" :-> a, "y" :-> b, "z" :-> c]@. Additionally generates
@@ -459,9 +463,8 @@ tableTypesText' RowGen {..} = do
 -- the CSV file has column names \"foo\", \"bar\", and \"baz\", then
 -- this will declare @type Foo = "foo" :-> Int@, for example, @foo =
 -- rlens \@Foo@, and @foo' = rlens' \@Foo@.
-tableTypes' :: forall ts b c.
-               (c ~ FSCU.ColType ts
-               , RMap ts
+tableTypes' :: forall ts b.
+               (RMap ts
                , RApply ts
                , RFoldMap ts
                , RecApplicative ts
@@ -469,11 +472,11 @@ tableTypes' :: forall ts b c.
                , Show (ICSV.ColumnIdType b))
             => RowGen b ts -> DecsQ
 tableTypes' (RowGen {..}) = do
-  (typedCols, pch) <- runIO $ SCSV.readColHeaders genColumnSelector lineSource :: Q ([(ICSV.ColTypeName, c)], ICSV.ParseColumnSelector)
+  (typedCols, pch) <- runIO $ SCSV.readColHeaders genColumnSelector lineSource :: Q ([SCSV.ColTypeInfo ts], ICSV.ParseColumnSelector)
 --  let colDecsFromTypedCols :: (ICSV.ColTypeName, FSCU.ColType ts)
 --      colDecsFromTypedCols
   (colTypes, colDecs) <- (second concat . unzip)
-                         <$> mapM (uncurry mkColDecs) typedCols
+                         <$> mapM mkColDecs typedCols
   let recTy = TySynD (mkName rowTypeName) [] (recDec colTypes)
       opts = ParserOptions pch separator (RFC4180Quoting '\"')
       optsName = case rowTypeName of
@@ -486,11 +489,17 @@ tableTypes' (RowGen {..}) = do
      --     <*> (concat <$> mapM (uncurry $ colDec (T.pack prefix)) headers)
   where lineSource :: Streamly.SerialT IO [Text]
         lineSource = Streamly.take inferencePrefix $ lineReader separator --P.>-> P.take inferencePrefix
-        mkColDecs :: ICSV.ColTypeName -> FSCU.ColType ts -> Q (Type, [Dec])
-        mkColDecs colNm colTy = do
+        inferMaybe :: ICSV.MaybeWhen -> FSCU.SomeMissing -> Bool
+        inferMaybe mw sm = case mw of
+          ICSV.NeverMaybe -> False
+          ICSV.AlwaysMaybe -> True
+          ICSV.MaybeIfSomeMissing -> sm == FSCU.SomeMissing
+        mkColDecs :: SCSV.ColTypeInfo ts -> Q (Type, [Dec])
+        mkColDecs (SCSV.ColTypeInfo colNm colMW colTy) = do
           let safeName = tablePrefix ++ (T.unpack . sanitizeTypeName . ICSV.colTypeName $ colNm) -- ??
               colTyTH = FSCU.colTypeTH colTy
+              isMaybe = inferMaybe colMW (FSCU.colTypeSomeMissing colTy)
           mColNm <- lookupTypeName safeName
           case mColNm of
             Just n -> pure (ConT n, []) -- Column's type was already defined
-            Nothing -> colDec (T.pack tablePrefix) rowTypeName (ICSV.colTypeName colNm) colTyTH
+            Nothing -> colDec (T.pack tablePrefix) rowTypeName (ICSV.colTypeName colNm) isMaybe colTyTH
