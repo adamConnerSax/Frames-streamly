@@ -35,7 +35,7 @@ import Data.Vinyl.CoRec
 import Data.Vinyl.Functor
 --import Data.Vinyl.TypeLevel (RIndex, NatToInt)
 import Frames.Streamly.ColumnTypeable
-import Frames.Categorical
+import Frames.Streamly.Categorical
 import Language.Haskell.TH
 
 -- | Extract a function to test whether some value of a given type
@@ -94,9 +94,9 @@ instance Functor CanParseAs where
 
 -- this is semigroup like but should not escape this module because of dropping rhs value
 -- so we just make it a function which we do not export
-combineCanParseAs :: (Parseable p, MonadPlus m) => CanParseAs p -> CanParseAs p -> m (CanParseAs p)
-combineCanParseAs (YesParse x) (YesParse y) = YesParse <$> parseCombine x y
-combineCanParseAs _ _ = return NoParse
+combineCanParseAs :: Parseable p => CanParseAs p -> CanParseAs p -> CanParseAs p
+combineCanParseAs (YesParse x) (YesParse y) = maybe NoParse YesParse $ parseCombine x y
+combineCanParseAs _ _ = NoParse
 
 data ParseResult ts = MissingData | ParseResult (Rec CanParseAs ts)
 
@@ -185,14 +185,13 @@ initialColType = UnknownColType NoneMissing
 {-# INLINE initialColType #-}
 
 
-addParsedCell :: forall ts m.(RMap ts, RApply ts, MonadPlus m, RPureConstrained Parseable ts) => ColType ts -> ParseResult ts -> m (ColType ts)
-addParsedCell (UnknownColType _) MissingData = return $ UnknownColType SomeMissing
-addParsedCell (UnknownColType sm) (ParseResult pRec) = return $ KnownColType (sm, pRec)
-addParsedCell (KnownColType (_, ctRec)) MissingData = return $ KnownColType (SomeMissing, ctRec)
-addParsedCell (KnownColType (sm, ctRec)) (ParseResult pRec) = do
-  let zipF t1 t2 = Compose $ combineCanParseAs t1 t2
-  newCtRec :: Rec CanParseAs ts <- rtraverse getCompose $ rzipWithC @Parseable zipF pRec ctRec
-  return $ KnownColType (sm, newCtRec)
+addParsedCell :: (RMap ts, RApply ts, RPureConstrained Parseable ts) => ColType ts -> ParseResult ts -> ColType ts
+addParsedCell (UnknownColType _) MissingData = UnknownColType SomeMissing
+addParsedCell (UnknownColType sm) (ParseResult pRec) = KnownColType (sm, pRec)
+addParsedCell (KnownColType (_, ctRec)) MissingData = KnownColType (SomeMissing, ctRec)
+addParsedCell (KnownColType (sm, ctRec)) (ParseResult pRec) = KnownColType (sm, newCtRec)
+  where
+    newCtRec = rzipWithC @Parseable combineCanParseAs pRec ctRec
 {-# INLINEABLE addParsedCell #-}
 
 data SimpleDict c a where
@@ -200,15 +199,14 @@ data SimpleDict c a where
 
 rzipWithC :: forall c ts f g h. (RMap ts, RApply ts, RPureConstrained c ts)
           => (forall x.c x => f x -> g x -> h x) -> Rec f ts -> Rec g ts -> Rec h ts
-rzipWithC zipF t1 t2 =
-   let dicts :: Rec (SimpleDict c) ts
-       dicts = rpureConstrained @c SimpleDict
-       g :: Rec (SimpleDict c) ts -> Rec f ts -> Rec (Lift (->) g h) ts
-       g cs cps = rzipWith h cs cps where
-         h :: SimpleDict c a -> f a -> Lift (->) g h a
-         h c x1 = case c of
-           SimpleDict -> Lift $ \x2 -> zipF x1 x2
-   in rapply (g dicts t1) t2
+rzipWithC zipF t1 = rapply (g dicts t1)  where
+  dicts :: Rec (SimpleDict c) ts
+  dicts = rpureConstrained @c SimpleDict
+  g :: Rec (SimpleDict c) ts -> Rec f ts -> Rec (Lift (->) g h) ts
+  g cs cps = rzipWith h cs cps where
+    h :: SimpleDict c a -> f a -> Lift (->) g h a
+    h c x1 = case c of
+      SimpleDict -> Lift $ \x2 -> zipF x1 x2
 {-# INLINEABLE rzipWithC #-}
 
 {-

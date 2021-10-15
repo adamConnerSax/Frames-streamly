@@ -807,7 +807,7 @@ peek = do
   lift $ Streamly.head s
 {-# INLINEABLE peek #-}
 
-{-
+
 foldAll :: Monad m
         => (x -> a -> x) -> x -> (x -> b) -> StreamState Streamly.SerialT m a b
 foldAll step start extract = do
@@ -819,8 +819,8 @@ foldAll step start extract = do
   s <- get
   lift $ Streamly.fold fld s
 {-# INLINEABLE foldAll #-}
--}
 
+{-
 foldAllM :: Monad m
         => (x -> a -> m x) -> m x -> (x -> m b) -> StreamState Streamly.SerialT m a b
 foldAllM step start extract = do
@@ -832,13 +832,12 @@ foldAllM step start extract = do
   s <- get
   lift $ Streamly.fold fld s
 {-# INLINEABLE foldAllM #-}
-
+-}
 
 -- | Infer column types from a prefix (up to 1000 lines) of a CSV
 -- file.
 prefixInference :: (MonadThrow m
                    , Monad m
-                   , MonadPlus m
                    , V.RMap ts
                    , V.RApply ts
                    , V.RFoldMap ts
@@ -853,20 +852,19 @@ prefixInference isMissing rF = do
 
   peek >>= \case
     Nothing -> lift $ throwM $ EmptyStreamException
-    Just _ -> foldAllM
-                 (\ts cols -> sequence $ zipWith FSCU.addParsedCell ts (inferCols cols))
-                 (return $ repeat FSCU.initialColType)
-                 (return . id)
+    Just _ -> foldAll
+                 (\ts -> zipWith FSCU.addParsedCell ts . inferCols)
+                 (repeat FSCU.initialColType)
+                 id
 {-# INLINEABLE prefixInference #-}
 
-data ColTypeInfo ts = ColTypeInfo { colTypeName :: ICSV.ColTypeName, colMaybeWhen :: ICSV.MaybeWhen, colBaseType :: FSCU.ColType ts}
+data ColTypeInfo ts = ColTypeInfo { colTypeName :: ICSV.ColTypeName, orMissingWhen :: ICSV.OrMissingWhen, colBaseType :: FSCU.ColType ts}
 
 -- | Extract column names and inferred types from a CSV file.
 readColHeaders :: forall ts b m.
                   (Show (ICSV.ColumnIdType b)
                   , Monad m
                   , MonadThrow m
-                  , MonadPlus m
                   , V.RMap ts
                   , V.RApply ts
                   , V.RFoldMap ts
@@ -906,7 +904,7 @@ readColHeaders rgColHandler = evalStateT $ do
           parseColHeader = ICSV.ParseWithoutHeader allColStates
       return (includedInfo, parseColHeader, Just allBools)
   let isMissing t = T.null t || t == "NA"
-      assembleCTI :: (ICSV.ColTypeName, ICSV.MaybeWhen) -> FSCU.ColType ts -> ColTypeInfo ts
+      assembleCTI :: (ICSV.ColTypeName, ICSV.OrMissingWhen) -> FSCU.ColType ts -> ColTypeInfo ts
       assembleCTI (a, b) c = ColTypeInfo a b c
   colTypes <- prefixInference isMissing rF
   unless (length headerRow == length colTypes) $ errNumColumns headerRow colTypes

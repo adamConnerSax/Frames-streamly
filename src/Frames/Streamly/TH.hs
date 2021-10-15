@@ -24,7 +24,7 @@ module Frames.Streamly.TH
   , declarePrefixedColumnType
     -- * Control Type-declarations for a table
   , RowGen(..)
-  , MaybeWhen(..)
+  , OrMissingWhen(..)
   , setMaybeWhen
   , rowGen
   , rowGenCat
@@ -48,14 +48,16 @@ module Frames.Streamly.TH
     -- * Header text vs. Type name text
   , ColTypeName(..)
   , HeaderText(..)
+    -- * Re-exports
+  , module Frames.Streamly.OrMissing
   )
 where
 
 import qualified Frames.Streamly.CSV as SCSV
 import qualified Frames.Streamly.Internal.CSV as ICSV
-import Frames.Streamly.Internal.CSV (ColumnId(..), HeaderText(..) ,ColTypeName(..), MaybeWhen(..))
+import Frames.Streamly.Internal.CSV (ColumnId(..), HeaderText(..) ,ColTypeName(..), OrMissingWhen(..))
 import Frames.Streamly.CSV (ParserOptions(..))
-
+import Frames.Streamly.OrMissing
 import qualified Frames.Streamly.ColumnUniverse as FSCU
 import qualified Frames.Streamly.ColumnTypeable as FSCT
 
@@ -128,15 +130,15 @@ lowerHead = fmap aux . T.uncons
 colDec :: T.Text -> String -> T.Text -> Bool
        -> Either (String -> Q [Dec]) Type
        -> Q (Type, [Dec])
-colDec prefix rowName colName addMaybe colTypeGen = do
+colDec prefix rowName colName addOrMissing colTypeGen = do
   (colTy', extraDecs) <- either colDecsHelper (pure . (,[])) colTypeGen
-  let colTy = addMaybeToTypeIf addMaybe colTy'
+  let colTy = addOrMissingToTypeIf addOrMissing colTy'
       colTypeQ = [t|$(litT . strTyLit $ T.unpack colName) :-> $(return colTy)|]
   syn <- mkColSynDec colTypeQ colTName'
   lenses <- mkColLensDec colTName' colTy colPName
   return (ConT colTName', syn : extraDecs ++ lenses)
-  where addMaybeToTypeIf :: Bool -> Type -> Type
-        addMaybeToTypeIf b t = if b then AppT (ConT ''Maybe) t else t
+  where addOrMissingToTypeIf :: Bool -> Type -> Type
+        addOrMissingToTypeIf b t = if b then AppT (ConT ''OrMissing) t else t
         colTName = sanitizeTypeName (prefix <> capitalize1 colName)
         colPName = fromMaybe "colDec impossible" (lowerHead colTName)
         colTName' = mkName $ T.unpack colTName
@@ -237,13 +239,13 @@ defaultIsMissing t = T.null t || t == "NA"
 -- get column names from the data file, use the default column
 -- separator (a comma), infer column types from the default 'Columns'
 -- set of types, and produce a row type with name @Row@.
-rowGen :: FilePath -> RowGen 'ColumnByName CommonColumns
+rowGen :: FilePath -> RowGen 'ColumnByName FSCU.CommonColumns
 rowGen = RowGen allColumnsAsNamed "" defaultSep "Row" Proxy 1000 defaultIsMissing . SCSV.streamTokenized'
 {-# INLINEABLE rowGen #-}
 
 -- | Like 'rowGen', but will also generate custom data types for
 -- 'Categorical' variables with up to 8 distinct variants.
-rowGenCat :: FilePath -> RowGen 'ColumnByName CommonColumnsCat
+rowGenCat :: FilePath -> RowGen 'ColumnByName FSCU.CommonColumnsCat
 rowGenCat = RowGen allColumnsAsNamed "" defaultSep "Row" Proxy 1000 defaultIsMissing . SCSV.streamTokenized'
 {-# INLINEABLE rowGenCat #-}
 
@@ -265,12 +267,12 @@ modifyRowTypeNameAndColumnSelector newRowName f rg =
 -- | Default Column Handler. Declare one type per column.
 -- Use the header to generate names.
 allColumnsAsNamed :: ICSV.RowGenColumnSelector 'ColumnByName
-allColumnsAsNamed = ICSV.GenUsingHeader (\x -> ICSV.Include (ICSV.ColTypeName $ ICSV.headerText x, ICSV.NeverMaybe)) (const [])
+allColumnsAsNamed = ICSV.GenUsingHeader (\x -> ICSV.Include (ICSV.ColTypeName $ ICSV.headerText x, ICSV.NeverMissing)) (const [])
 {-# INLINEABLE allColumnsAsNamed #-}
 
 -- | Helper for declaring column types from a file with no header.
 noHeaderColumnsNumbered' :: ICSV.RowGenColumnSelector 'ColumnByPosition
-noHeaderColumnsNumbered' = ICSV.GenWithoutHeader (\n -> ICSV.Include (ICSV.ColTypeName $ show n, ICSV.NeverMaybe)) (const [])
+noHeaderColumnsNumbered' = ICSV.GenWithoutHeader (\n -> ICSV.Include (ICSV.ColTypeName $ show n, ICSV.NeverMissing)) (const [])
 {-# INLINEABLE noHeaderColumnsNumbered' #-}
 
 -- | Use a given prefix and append the column number to generate column types for a file with no header.
@@ -314,12 +316,12 @@ renamedHeaderSubset :: Map ICSV.HeaderText ICSV.ColTypeName -> ICSV.RowGenColumn
 renamedHeaderSubset renamedS = ICSV.GenUsingHeader f mrF where
   f x = maybe ICSV.Exclude g $ Map.lookup x renamedS
   mrF = inMapKeysButNotList renamedS
-  g x = ICSV.Include (x, ICSV.NeverMaybe)
+  g x = ICSV.Include (x, ICSV.NeverMissing)
 {-# INLINEABLE renamedHeaderSubset #-}
 
 -- | rename some column types while leaving the rest alone.
 renameSome ::  Ord (ICSV.ColumnIdType a)
-           => Map (ICSV.ColumnIdType a) (ICSV.ColTypeName, ICSV.MaybeWhen)
+           => Map (ICSV.ColumnIdType a) (ICSV.ColTypeName, ICSV.OrMissingWhen)
            -> ICSV.RowGenColumnSelector a
            -> ICSV.RowGenColumnSelector a
 renameSome m rgcs = ICSV.modifyColumnSelector rgcs g h where
@@ -330,14 +332,14 @@ renameSome m rgcs = ICSV.modifyColumnSelector rgcs g h where
 {-# INLINEABLE renameSome #-}
 
 -- | rename some column types while leaving the rest alone.
-renameSomeUsingNames :: Map ICSV.HeaderText (ICSV.ColTypeName, ICSV.MaybeWhen)
+renameSomeUsingNames :: Map ICSV.HeaderText (ICSV.ColTypeName, ICSV.OrMissingWhen)
                      -> ICSV.RowGenColumnSelector 'ICSV.ColumnByName
                      -> ICSV.RowGenColumnSelector 'ICSV.ColumnByName
 renameSomeUsingNames = renameSome
 {-# INLINEABLE renameSomeUsingNames #-}
 
 -- | rename some column types while leaving the rest alone.
-renameSomeUsingPositions :: Map Int (ICSV.ColTypeName, ICSV.MaybeWhen)
+renameSomeUsingPositions :: Map Int (ICSV.ColTypeName, ICSV.OrMissingWhen)
                          -> ICSV.RowGenColumnSelector 'ICSV.ColumnByPosition
                          -> ICSV.RowGenColumnSelector 'ICSV.ColumnByPosition
 renameSomeUsingPositions = renameSome
@@ -354,7 +356,7 @@ namedColumnNumberSubset hasHeader namedS =
     else ICSV.GenWithoutHeader f mrF
   where
     f n = maybe ICSV.Exclude g $ Map.lookup n namedS
-    g x = ICSV.Include (x, ICSV.NeverMaybe)
+    g x = ICSV.Include (x, ICSV.NeverMissing)
     mrF = inMapKeysButNotList namedS
 {-# INLINEABLE namedColumnNumberSubset #-}
 
@@ -367,7 +369,7 @@ namesGiven hasHeader names = namedColumnNumberSubset hasHeader m
     m = Map.fromList $ zip [0..] names
 {-# INLINEABLE namesGiven #-}
 
-setMaybeWhen :: (Eq (ICSV.ColumnIdType b)) => ICSV.ColumnIdType b -> ICSV.MaybeWhen -> RowGen b a -> RowGen b a
+setMaybeWhen :: (Eq (ICSV.ColumnIdType b)) => ICSV.ColumnIdType b -> ICSV.OrMissingWhen -> RowGen b a -> RowGen b a
 setMaybeWhen cid mw rg = rg { genColumnSelector = newColSelector } where
   colSelector = genColumnSelector rg
   f oldF x = if x /= cid
@@ -489,11 +491,11 @@ tableTypes' (RowGen {..}) = do
      --     <*> (concat <$> mapM (uncurry $ colDec (T.pack prefix)) headers)
   where lineSource :: Streamly.SerialT IO [Text]
         lineSource = Streamly.take inferencePrefix $ lineReader separator --P.>-> P.take inferencePrefix
-        inferMaybe :: ICSV.MaybeWhen -> FSCU.SomeMissing -> Bool
+        inferMaybe :: ICSV.OrMissingWhen -> FSCU.SomeMissing -> Bool
         inferMaybe mw sm = case mw of
-          ICSV.NeverMaybe -> False
-          ICSV.AlwaysMaybe -> True
-          ICSV.MaybeIfSomeMissing -> sm == FSCU.SomeMissing
+          ICSV.NeverMissing -> False
+          ICSV.AlwaysPossible -> True
+          ICSV.IfSomeMissing -> sm == FSCU.SomeMissing
         mkColDecs :: SCSV.ColTypeInfo ts -> Q (Type, [Dec])
         mkColDecs (SCSV.ColTypeInfo colNm colMW colTy) = do
           let safeName = tablePrefix ++ (T.unpack . sanitizeTypeName . ICSV.colTypeName $ colNm) -- ??

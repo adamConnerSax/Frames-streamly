@@ -1,14 +1,17 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Main where
 
 import qualified DemoPaths as Paths
 import qualified Frames
+--import Frames.Streamly.Categorical ()
 import qualified Frames.Streamly.CSV as FStreamly
 import qualified Frames.Streamly.InCore as FStreamly
 import qualified Frames.Streamly.Transform as FStreamly
@@ -26,8 +29,10 @@ import DemoPaths (cesPath)
 
 FStreamly.tableTypes "ForestFires" (Paths.thPath Paths.forestFiresPath)
 FStreamly.tableTypes' Paths.ffColSubsetRowGen
-FStreamly.tableTypes' Paths.cesRowGen
+FStreamly.tableTypes' Paths.ffColSubsetRowGenCat
+--FStreamly.tableTypes' Paths.cesRowGen
 FStreamly.tableTypes' Paths.ffInferMaybeRowGen
+FStreamly.tableTypes' Paths.ffInferMaybeRowGenCat
 
 FStreamly.declareColumnType "MDay" [t|Maybe Text|]
 FStreamly.declareColumnType "MWind" [t|Maybe Int|]

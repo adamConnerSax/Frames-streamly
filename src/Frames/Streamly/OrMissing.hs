@@ -8,10 +8,14 @@
 {-# LANGUAGE TypeFamilies #-}
 module Frames.Streamly.OrMissing where
 
+import Frames.Streamly.InCore as FStreamly
+
 import Prelude hiding (Type, lift)
 import qualified Data.Text as T
 import Data.Vector.Unboxed.Deriving
 import Data.Vector.Unboxed (Unbox)
+import qualified Data.Vector as Vec
+import qualified Data.Vector.Unboxed as UVec
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 
@@ -50,6 +54,13 @@ derivingUnbox
   [t|OrMissing Double -> (Bool, Double)|]
   [e|orMissing (False, 0)(\x -> (True, x))|]
   [e|\(b, x) -> if b then Present x else Missing|]
+
+type instance FStreamly.VectorFor (OrMissing Bool) = UVec.Vector
+type instance FStreamly.VectorFor (OrMissing Int) = UVec.Vector
+type instance FStreamly.VectorFor (OrMissing Double) = UVec.Vector
+type instance FStreamly.VectorFor (OrMissing Text) = Vec.Vector
+
+
 
 derivingOrMissingUnbox :: (Lift a, Unbox a)
                      => Text -- ^ the name of type a

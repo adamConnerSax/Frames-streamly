@@ -31,14 +31,34 @@ ffColSubsetRowGen = FStreamly.modifyColumnSelector modSelector rowGen
     rowGen = (FStreamly.rowGen (thPath forestFiresPath)) { FStreamly.rowTypeName = rowTypeName }
     modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
 
+ffColSubsetRowGenCat :: FStreamly.RowGen 'FStreamly.ColumnByName FStreamly.CommonColumnsCat
+ffColSubsetRowGenCat = FStreamly.modifyColumnSelector modSelector rowGen
+  where
+    rowTypeName = "FFColSubsetCat"
+    rowGen = (FStreamly.rowGenCat (thPath forestFiresPath)) { FStreamly.rowTypeName = rowTypeName, FStreamly.tablePrefix = "Cat" }
+    modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
+
+
 ffInferMaybeRowGen :: FStreamly.RowGen 'FStreamly.ColumnByName FStreamly.CommonColumns
 ffInferMaybeRowGen = setMaybeWhen $ FStreamly.modifyColumnSelector modSelector rowGen
   where
-    setMaybeWhen = FStreamly.setMaybeWhen (FStreamly.HeaderText "wind") FStreamly.MaybeIfSomeMissing
+    setMaybeWhen = FStreamly.setMaybeWhen (FStreamly.HeaderText "wind") FStreamly.IfSomeMissing
     modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
     rowGen = (FStreamly.rowGen (thPath forestFiresMissingPath)) {
       FStreamly.rowTypeName = "FFInferMaybe"
       , FStreamly.tablePrefix = "IM"
+      }
+
+
+ffInferMaybeRowGenCat :: FStreamly.RowGen 'FStreamly.ColumnByName FStreamly.CommonColumnsCat
+ffInferMaybeRowGenCat = setMaybeWhen $ FStreamly.modifyColumnSelector modSelector rowGen
+  where
+    setMaybeWhen = FStreamly.setMaybeWhen (FStreamly.HeaderText "wind") FStreamly.IfSomeMissing
+                   . FStreamly.setMaybeWhen (FStreamly.HeaderText "day") FStreamly.IfSomeMissing
+    modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
+    rowGen = (FStreamly.rowGenCat (thPath forestFiresMissingPath)) {
+      FStreamly.rowTypeName = "FFInferMaybeCat"
+      , FStreamly.tablePrefix = "IMC"
       }
 
 
