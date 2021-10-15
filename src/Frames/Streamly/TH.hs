@@ -3,6 +3,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -319,27 +320,31 @@ renamedHeaderSubset renamedS = ICSV.GenUsingHeader f mrF where
   g x = ICSV.Include (x, ICSV.NeverMissing)
 {-# INLINEABLE renamedHeaderSubset #-}
 
+
 -- | rename some column types while leaving the rest alone.
 renameSome ::  Ord (ICSV.ColumnIdType a)
-           => Map (ICSV.ColumnIdType a) (ICSV.ColTypeName, ICSV.OrMissingWhen)
+           => Map (ICSV.ColumnIdType a) ICSV.ColTypeName --, ICSV.OrMissingWhen)
            -> ICSV.RowGenColumnSelector a
            -> ICSV.RowGenColumnSelector a
 renameSome m rgcs = ICSV.modifyColumnSelector rgcs g h where
+  wom = \case
+    ICSV.Exclude -> NeverMissing
+    ICSV.Include (_, x) -> x
   g f cid = case Map.lookup cid m of
     Nothing -> f cid
-    Just x -> ICSV.Include x
+    Just x -> ICSV.Include (x, wom $ f cid)
   h mrF cids = mrF cids ++ inMapKeysButNotList m cids
 {-# INLINEABLE renameSome #-}
 
 -- | rename some column types while leaving the rest alone.
-renameSomeUsingNames :: Map ICSV.HeaderText (ICSV.ColTypeName, ICSV.OrMissingWhen)
+renameSomeUsingNames :: Map ICSV.HeaderText ICSV.ColTypeName --, ICSV.OrMissingWhen)
                      -> ICSV.RowGenColumnSelector 'ICSV.ColumnByName
                      -> ICSV.RowGenColumnSelector 'ICSV.ColumnByName
 renameSomeUsingNames = renameSome
 {-# INLINEABLE renameSomeUsingNames #-}
 
 -- | rename some column types while leaving the rest alone.
-renameSomeUsingPositions :: Map Int (ICSV.ColTypeName, ICSV.OrMissingWhen)
+renameSomeUsingPositions :: Map Int ICSV.ColTypeName
                          -> ICSV.RowGenColumnSelector 'ICSV.ColumnByPosition
                          -> ICSV.RowGenColumnSelector 'ICSV.ColumnByPosition
 renameSomeUsingPositions = renameSome

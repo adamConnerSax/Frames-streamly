@@ -34,7 +34,7 @@ ffColSubsetRowGen = FStreamly.modifyColumnSelector modSelector rowGen
 
 ffRenameDayRowGen :: FStreamly.RowGen 'FStreamly.ColumnByName Frames.CommonColumns
 ffRenameDayRowGen = FStreamly.modifyRowTypeNameAndColumnSelector "FFRenameDay" modSelector ffColSubsetRowGen where
-  modSelector = FStreamly.renameSome (Map.fromList [(FStreamly.HeaderText "day", FStreamly.ColTypeName "DayOfWeek")])
+  modSelector = FStreamly.renameSomeUsingNames (Map.fromList [(FStreamly.HeaderText "day", FStreamly.ColTypeName "DayOfWeek")])
 
 ffNoHeaderRowGen :: FStreamly.RowGen 'FStreamly.ColumnByPosition Frames.CommonColumns
 ffNoHeaderRowGen = FStreamly.modifyColumnSelector modSelector rowGen
