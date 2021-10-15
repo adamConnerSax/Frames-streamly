@@ -4,7 +4,7 @@
              KindSignatures, LambdaCase, MultiParamTypeClasses,
              OverloadedStrings, QuasiQuotes, RankNTypes,
              ScopedTypeVariables, StandaloneKindSignatures,
-             TemplateHaskell, TypeApplications,
+             TemplateHaskell, TupleSections, TypeApplications,
              TypeFamilies, TypeOperators, UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Frames.Streamly.ColumnUniverse (
@@ -80,18 +80,23 @@ instance Semigroup SomeMissing where
   _ <> SomeMissing = SomeMissing
   NoneMissing <> NoneMissing = NoneMissing
 
-data CanParseAs p = YesParse p | NoParse
-
+data CanParseAs p = YesParse (Parsed p) | NoParse
+{-
+data CanParseAs p where
+  YesParse :: Parseable p => Parsed p -> CanParseAs p
+  NoParse :: CanParseAs p
+-}
+{-
 instance Functor CanParseAs where
-  fmap f (YesParse p) = YesParse (f p)
+  fmap f (YesParse p) = YesParse (fmap f p)
   fmap _ NoParse = NoParse
-
+-}
 
 -- this is semigroup like but should not escape this module because of dropping rhs value
 -- so we just make it a function which we do not export
-combineCanParseAs :: CanParseAs p -> CanParseAs p -> CanParseAs p
-combineCanParseAs (YesParse x) (YesParse _) = YesParse x
-combineCanParseAs _ _ = NoParse
+combineCanParseAs :: (Parseable p, MonadPlus m) => CanParseAs p -> CanParseAs p -> m (CanParseAs p)
+combineCanParseAs (YesParse x) (YesParse y) = YesParse <$> parseCombine x y
+combineCanParseAs _ _ = return NoParse
 
 data ParseResult ts = MissingData | ParseResult (Rec CanParseAs ts)
 
@@ -120,7 +125,7 @@ recParsedToRecCanParseAs = rmap (parsedToCanParseAs . getCompose)
 
 parsedToCanParseAs :: Maybe (Parsed a) -> CanParseAs a
 parsedToCanParseAs Nothing = NoParse
-parsedToCanParseAs (Just x)  = YesParse $ parsedValue x
+parsedToCanParseAs (Just x)  = YesParse x
 {-# INLINE parsedToCanParseAs #-}
 
 data ColType ts = UnknownColType SomeMissing
@@ -136,9 +141,8 @@ colTHs = rpureConstrained @Parseable f where
   f :: forall a.Parseable a => ColTHF a --CanParseAs a -> (Const ColTH) a
   f = Lift $ \x -> Const $ case x of
     NoParse ->  Nothing
-    YesParse a -> Just $ getConst $ representableAsType (Definitely a)
+    YesParse a -> Just $ getConst $ representableAsType a
 {-# INLINE colTHs #-}
-
 
 fallbackText :: ColTH
 fallbackText = Right (ConT (mkName "Text"))
@@ -180,12 +184,33 @@ initialColType :: ColType ts
 initialColType = UnknownColType NoneMissing
 {-# INLINE initialColType #-}
 
-addParsedCell :: (RMap ts, RApply ts) => ColType ts -> ParseResult ts -> ColType ts
-addParsedCell (UnknownColType _) MissingData = UnknownColType SomeMissing
-addParsedCell (UnknownColType sm) (ParseResult pRec) = KnownColType (sm, pRec)
-addParsedCell (KnownColType (_, ctRec)) MissingData = KnownColType (SomeMissing, ctRec)
-addParsedCell (KnownColType (sm, ctRec)) (ParseResult pRec) = KnownColType (sm, rzipWith combineCanParseAs pRec ctRec)
+
+addParsedCell :: forall ts m.(RMap ts, RApply ts, MonadPlus m, RPureConstrained Parseable ts) => ColType ts -> ParseResult ts -> m (ColType ts)
+addParsedCell (UnknownColType _) MissingData = return $ UnknownColType SomeMissing
+addParsedCell (UnknownColType sm) (ParseResult pRec) = return $ KnownColType (sm, pRec)
+addParsedCell (KnownColType (_, ctRec)) MissingData = return $ KnownColType (SomeMissing, ctRec)
+addParsedCell (KnownColType (sm, ctRec)) (ParseResult pRec) = do
+  let zipF t1 t2 = Compose $ combineCanParseAs t1 t2
+  newCtRec :: Rec CanParseAs ts <- rtraverse getCompose $ rzipWithC @Parseable zipF pRec ctRec
+  return $ KnownColType (sm, newCtRec)
 {-# INLINEABLE addParsedCell #-}
+
+data SimpleDict c a where
+  SimpleDict :: c a => SimpleDict c a
+
+rzipWithC :: forall c ts f g h. (RMap ts, RApply ts, RPureConstrained c ts)
+          => (forall x.c x => f x -> g x -> h x) -> Rec f ts -> Rec g ts -> Rec h ts
+rzipWithC zipF t1 t2 =
+   let dicts :: Rec (SimpleDict c) ts
+       dicts = rpureConstrained @c SimpleDict
+       g :: Rec (SimpleDict c) ts -> Rec f ts -> Rec (Lift (->) g h) ts
+       g cs cps = rzipWith h cs cps where
+         h :: SimpleDict c a -> f a -> Lift (->) g h a
+         h c x1 = case c of
+           SimpleDict -> Lift $ \x2 -> zipF x1 x2
+   in rapply (g dicts t1) t2
+{-# INLINEABLE rzipWithC #-}
+
 {-
 -- * Column Type Inference
 

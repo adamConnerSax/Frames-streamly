@@ -117,7 +117,6 @@ import Streamly.Prelude                       (IsStream)
 import qualified Streamly.Internal.Unicode.Array.Char as Streamly.Unicode.Array
 import qualified Streamly.Data.Array.Foreign as Streamly.Array
 import qualified Streamly.Unicode.Stream           as Streamly.Unicode
-import qualified Streamly.Internal.Data.Fold.Type as Streamly.Fold
 #else
 import qualified Streamly                               as Streamly
 import           Streamly                                ( IsStream )
@@ -808,24 +807,38 @@ peek = do
   lift $ Streamly.head s
 {-# INLINEABLE peek #-}
 
+{-
 foldAll :: Monad m
         => (x -> a -> x) -> x -> (x -> b) -> StreamState Streamly.SerialT m a b
 foldAll step start extract = do
 #if MIN_VERSION_streamly(0,8,0)
-  let step' x a = Streamly.Fold.Partial $ step x a
-      start' = Streamly.Fold.Partial start
-      fld = Streamly.Fold.mkFold step' start' extract
+  let fld = extract <$> Streamly.Fold.foldl' step start
 #else
   let fld = Streamly.Fold.mkPure step start extract
 #endif
   s <- get
   lift $ Streamly.fold fld s
 {-# INLINEABLE foldAll #-}
+-}
+
+foldAllM :: Monad m
+        => (x -> a -> m x) -> m x -> (x -> m b) -> StreamState Streamly.SerialT m a b
+foldAllM step start extract = do
+#if MIN_VERSION_streamly(0,8,0)
+  let fld = Streamly.Fold.rmapM extract $ Streamly.Fold.foldlM' step start
+#else
+  let fld = Streamly.Fold.mkFold step start extract
+#endif
+  s <- get
+  lift $ Streamly.fold fld s
+{-# INLINEABLE foldAllM #-}
+
 
 -- | Infer column types from a prefix (up to 1000 lines) of a CSV
 -- file.
 prefixInference :: (MonadThrow m
                    , Monad m
+                   , MonadPlus m
                    , V.RMap ts
                    , V.RApply ts
                    , V.RFoldMap ts
@@ -840,10 +853,10 @@ prefixInference isMissing rF = do
 
   peek >>= \case
     Nothing -> lift $ throwM $ EmptyStreamException
-    Just _ -> foldAll
-                 (\ts  -> zipWith FSCU.addParsedCell ts . inferCols)
-                 (repeat FSCU.initialColType)
-                 id
+    Just _ -> foldAllM
+                 (\ts cols -> sequence $ zipWith FSCU.addParsedCell ts (inferCols cols))
+                 (return $ repeat FSCU.initialColType)
+                 (return . id)
 {-# INLINEABLE prefixInference #-}
 
 data ColTypeInfo ts = ColTypeInfo { colTypeName :: ICSV.ColTypeName, colMaybeWhen :: ICSV.MaybeWhen, colBaseType :: FSCU.ColType ts}
@@ -853,6 +866,7 @@ readColHeaders :: forall ts b m.
                   (Show (ICSV.ColumnIdType b)
                   , Monad m
                   , MonadThrow m
+                  , MonadPlus m
                   , V.RMap ts
                   , V.RApply ts
                   , V.RFoldMap ts
