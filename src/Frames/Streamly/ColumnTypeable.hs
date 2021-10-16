@@ -6,6 +6,8 @@
 module Frames.Streamly.ColumnTypeable where
 
 import Prelude hiding (Const, Type)
+import Frames.Streamly.OrMissing
+
 --import Control.Monad (MonadPlus)
 --import Data.Maybe (fromMaybe)
 import Data.Readable (Readable(fromText))
@@ -86,6 +88,21 @@ instance Parseable Double where
   -- out commas lets us parse those sucessfully
   parse = fmap Definitely . fromText . T.filter (/= ',')
 instance Parseable T.Text where
+
+q :: Parsed (OrMissing a) -> OrMissing (Parsed a)
+q (Possibly Missing) = Missing
+q (Possibly (Present a)) = Present (Possibly a)
+q (Definitely Missing) = Missing
+q (Definitely (Present a)) = Present (Definitely a)
+
+instance (Typeable a, Parseable a) => Parseable (OrMissing a) where
+  parse t = return $ maybe (Definitely Missing) (fmap Present) $ parse t
+  parseCombine p1 p2 = case (q p1, q p2) of
+    (Missing, Missing) -> return $ Definitely Missing
+    (Present x, Missing) -> return $ fmap Present x
+    (Missing, Present x) -> return $ fmap Present x
+    (Present x, Present y) -> fmap Present <$> parseCombine x y
+
 
 -- | This class relates a universe of possible column types to Haskell
 -- types, and provides a mechanism to infer which type best represents

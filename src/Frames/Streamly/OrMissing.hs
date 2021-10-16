@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -19,7 +20,7 @@ import qualified Data.Vector.Unboxed as UVec
 import Language.Haskell.TH
 import Language.Haskell.TH.Syntax
 
-data OrMissing a = Missing | Present a deriving (Show, Eq, Ord, Generic, Functor)
+data OrMissing a = Missing | Present a deriving (Show, Eq, Ord, Generic, Functor, Typeable)
 
 toMaybe :: OrMissing a -> Maybe a
 toMaybe Missing = Nothing

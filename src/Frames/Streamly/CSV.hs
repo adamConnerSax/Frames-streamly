@@ -145,7 +145,7 @@ import qualified Frames
 import qualified Frames.CSV                             as Frames
 import Frames.CSV                             (Separator, QuoteChar, QuotingMode(..), defaultSep)
 import qualified Frames.ShowCSV                         as Frames
-import qualified Frames.ColumnTypeable                  as Frames
+--import qualified Frames.ColumnTypeable                  as Frames
 import qualified Data.Vinyl as V
 import qualified Data.Vinyl.Functor as V (Compose(..), (:.))
 import GHC.TypeLits (KnownSymbol)
@@ -769,14 +769,14 @@ instance StrictReadRec '[] where
   strictReadRec _ = V.RNil
   {-# INLINEABLE strictReadRec #-}
 
-instance (Frames.Parseable t, StrictReadRec ts, KnownSymbol s) => StrictReadRec (s Frames.:-> t ': ts) where
+instance (FSCT.Parseable t, StrictReadRec ts, KnownSymbol s) => StrictReadRec (s Frames.:-> t ': ts) where
   -- This one is neccesary to avoid a warning about incomplete pattern matches. ??
   strictReadRec [] = V.Compose (Strict.Left mempty) V.:& strictReadRec []
 
   strictReadRec (!h : t) = maybe
                            (V.Compose (Strict.Left (T.copy h)))
                            (V.Compose . Strict.Right . V.Field)
-                           (Frames.parse' h)
+                           (FSCT.parse' h)
                            V.:& strictReadRec t
   {-# INLINEABLE strictReadRec #-}
 

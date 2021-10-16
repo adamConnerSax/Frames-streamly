@@ -16,6 +16,7 @@ import qualified Frames.Streamly.CSV as FStreamly
 import qualified Frames.Streamly.InCore as FStreamly
 import qualified Frames.Streamly.Transform as FStreamly
 import qualified Frames.Streamly.TH as FStreamly
+import Frames.Streamly.ColumnTypeable ()
 import qualified Data.Vinyl as V
 import qualified Data.Vinyl.Functor as V
 import qualified Text.Printf as Printf
@@ -71,7 +72,7 @@ main = do
     <> show (tableLength forestFires)
     <> " and with missing data (1 row missing 'day' a Text entry, one missing 'wind', a Double) has "
     <> show (tableLength forestFiresMissing)
-  forestFiresMissing2 :: [Frames.Record FFMRow] <- Streamly.toList $ FStreamly.readTableOpt fFColSubsetParser forestFiresMissingPath
-  putStrLn $ "Loaded the same table but with the types for 'day' and 'wind' (manually) set to Maybe. Has "
+  forestFiresMissing2 :: Frames.Frame FFInferMaybe <- FStreamly.inCoreAoS $ FStreamly.readTableOpt fFInferMaybeParser forestFiresMissingPath
+  putStrLn $ "Loaded the same table but with the types for 'day' and 'wind' set to OrMissing. Has "
     <> show (tableLength forestFiresMissing2)
     <> " rows."
