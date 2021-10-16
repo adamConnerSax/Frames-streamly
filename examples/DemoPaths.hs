@@ -1,13 +1,27 @@
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
---{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module DemoPaths where
 
+import DayOfWeek
+
 import qualified Paths_Frames_streamly as Paths
 import qualified Frames.Streamly.TH as FStreamly
+import qualified Frames.Streamly.InCore as FStreamly
+import qualified Frames.Streamly.OrMissing as FStreamly
 import qualified Frames.Streamly.ColumnUniverse as FStreamly
+import Data.Vector.Unboxed.Deriving
+import qualified Data.Vector.Unboxed as UVec
 import qualified Data.Set as Set
+import Frames.Streamly.OrMissing (derivingOrMissingUnbox)
+
+derivingOrMissingUnbox "DayOfWeek" Monday
+
+type instance FStreamly.VectorFor (FStreamly.OrMissing DayOfWeek) = UVec.Vector
 
 forestFiresPath :: FilePath
 forestFiresPath = "forestfires.csv"

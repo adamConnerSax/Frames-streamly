@@ -67,6 +67,7 @@ executable Demo
   main-is: Main.hs
   other-modules:
       DemoPaths
+      DayOfWeek
       Paths_Frames_streamly
   hs-source-dirs:
       examples
@@ -77,9 +78,16 @@ executable Demo
     , base
     , containers
     , foldl
+    , relude
     , streamly
+    , template-haskell
     , text
+    , vector
+    , vector-th-unbox
     , vinyl
+  mixins:  base hiding (Prelude)
+         , relude (Relude as Prelude
+         , Relude.Extra)
   default-language: Haskell2010
 
 test-suite FramesStreamlySpec

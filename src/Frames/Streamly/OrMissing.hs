@@ -71,6 +71,6 @@ derivingOrMissingUnbox name anyA = do
   let nameQ = conT (mkName $ T.unpack name)
       typQ = [t|() => OrMissing $(nameQ) -> (Bool, $(nameQ))|]
       expNothing = (False, anyA)
-      srcToRepExpQ = [e|orMissing (False, expNothing) (\x -> (True, x))|]
+      srcToRepExpQ = [e|orMissing expNothing (\x -> (True, x))|]
       repToSrcExpQ = [e|\(b, x) -> if b then Present x else Missing|]
   derivingUnbox (T.unpack $ "OrMissing" <> name) typQ srcToRepExpQ repToSrcExpQ

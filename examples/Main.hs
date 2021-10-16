@@ -38,6 +38,10 @@ FStreamly.tableTypes' Paths.ffInferMaybeRowGenCat
 FStreamly.declareColumnType "MDay" [t|Maybe Text|]
 FStreamly.declareColumnType "MWind" [t|Maybe Int|]
 
+
+
+
+
 type FFMRow = [X,Y,Month, MDay, Temp, MWind]
 
 main :: IO ()
