@@ -10,6 +10,7 @@
 module Main where
 
 import qualified DemoPaths as Paths
+import DayOfWeek
 import qualified Frames
 --import Frames.Streamly.Categorical ()
 import qualified Frames.Streamly.CSV as FStreamly
@@ -34,15 +35,7 @@ FStreamly.tableTypes' Paths.ffColSubsetRowGenCat
 --FStreamly.tableTypes' Paths.cesRowGen
 FStreamly.tableTypes' Paths.ffInferMaybeRowGen
 FStreamly.tableTypes' Paths.ffInferMaybeRowGenCat
-
-FStreamly.declareColumnType "MDay" [t|Maybe Text|]
-FStreamly.declareColumnType "MWind" [t|Maybe Int|]
-
-
-
-
-
-type FFMRow = [X,Y,Month, MDay, Temp, MWind]
+FStreamly.tableTypes' Paths.ffCInferMaybeRowGen
 
 main :: IO ()
 main = do

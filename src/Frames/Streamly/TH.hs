@@ -25,6 +25,8 @@ module Frames.Streamly.TH
   , declarePrefixedColumnType
     -- * Control Type-declarations for a table
   , RowGen(..)
+  , defaultSep
+  , defaultIsMissing
   , OrMissingWhen(..)
   , setMaybeWhen
   , rowGen

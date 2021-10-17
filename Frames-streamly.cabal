@@ -78,6 +78,7 @@ executable Demo
     , base
     , containers
     , foldl
+    , readable
     , relude
     , streamly
     , template-haskell

@@ -11,6 +11,7 @@ import DayOfWeek
 
 import qualified Paths_Frames_streamly as Paths
 import qualified Frames.Streamly.TH as FStreamly
+import qualified Frames.Streamly.CSV as FStreamly
 import qualified Frames.Streamly.InCore as FStreamly
 import qualified Frames.Streamly.OrMissing as FStreamly
 import qualified Frames.Streamly.ColumnUniverse as FStreamly
@@ -76,7 +77,27 @@ ffInferMaybeRowGenCat = setMaybeWhen $ FStreamly.modifyColumnSelector modSelecto
       }
 
 
+type FFColumns = [Bool, Int, Double, DayOfWeek, Text]
 
+ffCInferMaybeRowGen :: FStreamly.RowGen 'FStreamly.ColumnByName FFColumns
+ffCInferMaybeRowGen = setMaybeWhen $ FStreamly.modifyColumnSelector modSelector rg
+  where
+    rg = FStreamly.RowGen
+         FStreamly.allColumnsAsNamed
+         "IMCC"
+         FStreamly.defaultSep
+         "FFCInferOrMissing"
+         (Proxy :: Proxy FFColumns)
+         1000
+         FStreamly.defaultIsMissing
+         (FStreamly.streamTokenized'  (thPath forestFiresMissingPath))
+    setMaybeWhen = FStreamly.setMaybeWhen (FStreamly.HeaderText "wind") FStreamly.IfSomeMissing
+                   . FStreamly.setMaybeWhen (FStreamly.HeaderText "day") FStreamly.IfSomeMissing
+    modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
+
+
+
+{-
 cesCols :: Set.Set FStreamly.HeaderText
 cesCols = Set.fromList (FStreamly.HeaderText <$> ["year"
                                                  , "case_id"
@@ -108,3 +129,4 @@ cesRowGenAllCols = (FStreamly.rowGen (thPath cesPath)) { FStreamly.tablePrefix =
 
 cesRowGen = FStreamly.modifyColumnSelector colSubset cesRowGenAllCols where
   colSubset = FStreamly.columnSubset cesCols
+-}
