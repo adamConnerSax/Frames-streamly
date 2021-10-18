@@ -1,32 +1,32 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveLift #-}
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module DayOfWeek where
 
-import qualified Frames.Streamly.InCore as FStreamly
 import qualified Frames.Streamly.ColumnTypeable as FStreamly
+import Frames.Streamly.OrMissing
 import qualified Data.Readable as Readable
-import Data.Vector.Unboxed.Deriving
-import qualified Data.Vector.Unboxed as UVec
-import Language.Haskell.TH.Syntax (Lift)
-import Streamly.Internal.Foreign.Malloc (mallocForeignPtrAlignedUnmanagedBytes)
 import Frames (Readable(fromText))
 import qualified Frames as Readble
 
 
-data DayOfWeek = Monday | Tuesday | Wednesday | Thursday | Friday | Saturday | Sunday deriving (Show, Eq, Enum, Bounded, Lift)
+data DayOfWeek = Monday | Tuesday | Wednesday | Thursday | Friday | Saturday | Sunday deriving (Show, Eq, Enum, Bounded)
 
-derivingUnbox
+
+-- This derives Unbox and VectorFor for DayOfWeek and (OrMissing DayOfWeek)
+derivingOrMissingUnboxVectorFor'
+  (derivingUnbox
+    "DayOfWeek"
+    [t|DayOfWeek -> Word8|]
+    [e|fromIntegral . fromEnum|]
+    [e|toEnum . fromIntegral|])
   "DayOfWeek"
-  [t|DayOfWeek -> Word8|]
-  [e|fromIntegral . fromEnum|]
-  [e|toEnum . fromIntegral|]
-
-type instance FStreamly.VectorFor DayOfWeek = UVec.Vector
+  [e|Monday|]
 
 instance Readable.Readable DayOfWeek where
   fromText "mon" = return Monday
