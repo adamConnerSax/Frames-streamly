@@ -54,47 +54,52 @@ ffColSubsetRowGenCat = FStreamly.modifyColumnSelector modSelector rowGen
     modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
 
 
-ffInferMaybeRowGen :: FStreamly.RowGen 'FStreamly.ColumnByName FStreamly.CommonColumns
-ffInferMaybeRowGen = setMaybeWhen $ FStreamly.modifyColumnSelector modSelector rowGen
+ffInferOrMissingRG :: FStreamly.RowGen 'FStreamly.ColumnByName FStreamly.CommonColumns
+ffInferOrMissingRG = setOrMissingWhen $ FStreamly.modifyColumnSelector modSelector rowGen
   where
-    setMaybeWhen = FStreamly.setMaybeWhen (FStreamly.HeaderText "wind") FStreamly.IfSomeMissing
+    setOrMissingWhen = FStreamly.setOrMissingWhen (FStreamly.HeaderText "wind") FStreamly.IfSomeMissing
     modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
     rowGen = (FStreamly.rowGen (thPath forestFiresMissingPath)) {
-      FStreamly.rowTypeName = "FFInferMaybe"
+      FStreamly.rowTypeName = "FFInferOrMissing"
       , FStreamly.tablePrefix = "IM"
       }
 
 
-ffInferMaybeRowGenCat :: FStreamly.RowGen 'FStreamly.ColumnByName FStreamly.CommonColumnsCat
-ffInferMaybeRowGenCat = setMaybeWhen $ FStreamly.modifyColumnSelector modSelector rowGen
+ffInferOrMissingCatRG :: FStreamly.RowGen 'FStreamly.ColumnByName FStreamly.CommonColumnsCat
+ffInferOrMissingCatRG = setOrMissingWhen $ FStreamly.modifyColumnSelector modSelector rowGen
   where
-    setMaybeWhen = FStreamly.setMaybeWhen (FStreamly.HeaderText "wind") FStreamly.IfSomeMissing
-                   . FStreamly.setMaybeWhen (FStreamly.HeaderText "day") FStreamly.IfSomeMissing
+    setOrMissingWhen = FStreamly.setOrMissingWhen (FStreamly.HeaderText "wind") FStreamly.IfSomeMissing
+                   . FStreamly.setOrMissingWhen (FStreamly.HeaderText "day") FStreamly.IfSomeMissing
     modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
     rowGen = (FStreamly.rowGenCat (thPath forestFiresMissingPath)) {
-      FStreamly.rowTypeName = "FFInferMaybeCat"
+      FStreamly.rowTypeName = "FFInferOrMisingCat"
       , FStreamly.tablePrefix = "IMC"
       }
 
 
-type FFColumns = [Bool, Int, Double, DayOfWeek, Text]
+type TDColumns = [Bool, Int, Double, DayOfWeek, Text]
 
-ffCInferMaybeRowGen :: FStreamly.RowGen 'FStreamly.ColumnByName FFColumns
-ffCInferMaybeRowGen = setMaybeWhen $ FStreamly.modifyColumnSelector modSelector rg
+ffInferTypedDayRG :: FStreamly.RowGen 'FStreamly.ColumnByName TDColumns
+ffInferTypedDayRG = FStreamly.modifyColumnSelector modSelector rg
   where
     rg = FStreamly.RowGen
          FStreamly.allColumnsAsNamed
-         "IMCC"
+         "TD"
          FStreamly.defaultSep
-         "FFCInferOrMissing"
-         (Proxy :: Proxy FFColumns)
+         "FFInferTypedDay"
+         (Proxy :: Proxy TDColumns)
          1000
          FStreamly.defaultIsMissing
-         (FStreamly.streamTokenized'  (thPath forestFiresMissingPath))
-    setMaybeWhen = FStreamly.setMaybeWhen (FStreamly.HeaderText "wind") FStreamly.IfSomeMissing
-                   . FStreamly.setMaybeWhen (FStreamly.HeaderText "day") FStreamly.IfSomeMissing
+         (FStreamly.streamTokenized'  (thPath forestFiresPath))
     modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
 
+ffInferTypedDayOrMissingRG :: FStreamly.RowGen 'FStreamly.ColumnByName TDColumns
+ffInferTypedDayOrMissingRG = setOrMissingWhen
+                              $ ffInferTypedDayRG { FStreamly.rowTypeName = "FFInferTypedDayOrMissing"
+                                                  , FStreamly.tablePrefix = "TDOM"
+                                                  , FStreamly.lineReader =  (FStreamly.streamTokenized'  (thPath forestFiresMissingPath))} where
+  setOrMissingWhen = FStreamly.setOrMissingWhen (FStreamly.HeaderText "wind") FStreamly.IfSomeMissing
+                     . FStreamly.setOrMissingWhen (FStreamly.HeaderText "day") FStreamly.IfSomeMissing
 
 
 {-

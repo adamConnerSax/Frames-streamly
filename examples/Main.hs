@@ -33,9 +33,11 @@ FStreamly.tableTypes "ForestFires" (Paths.thPath Paths.forestFiresPath)
 FStreamly.tableTypes' Paths.ffColSubsetRowGen
 FStreamly.tableTypes' Paths.ffColSubsetRowGenCat
 --FStreamly.tableTypes' Paths.cesRowGen
-FStreamly.tableTypes' Paths.ffInferMaybeRowGen
-FStreamly.tableTypes' Paths.ffInferMaybeRowGenCat
-FStreamly.tableTypes' Paths.ffCInferMaybeRowGen
+FStreamly.tableTypes' Paths.ffInferOrMissingRG
+FStreamly.tableTypes' Paths.ffInferOrMissingCatRG
+FStreamly.tableTypes' Paths.ffInferTypedDayRG
+FStreamly.tableTypes' Paths.ffInferTypedDayOrMissingRG
+
 
 main :: IO ()
 main = do
@@ -69,7 +71,15 @@ main = do
     <> show (tableLength forestFires)
     <> " and with missing data (1 row missing 'day' a Text entry, one missing 'wind', a Double) has "
     <> show (tableLength forestFiresMissing)
-  forestFiresMissing2 :: Frames.Frame FFInferMaybe <- FStreamly.inCoreAoS $ FStreamly.readTableOpt fFInferMaybeParser forestFiresMissingPath
+  forestFiresMissing2 :: Frames.Frame FFInferOrMissing <- FStreamly.inCoreAoS $ FStreamly.readTableOpt fFInferOrMissingParser forestFiresMissingPath
   putStrLn $ "Loaded the same table but with the types for 'day' and 'wind' set to OrMissing. Has "
     <> show (tableLength forestFiresMissing2)
+    <> " rows."
+  forestFiresTypedDay :: Frames.Frame FFInferTypedDay <- FStreamly.inCoreAoS $ FStreamly.readTableOpt fFInferTypedDayParser forestFiresMissingPath
+  putStrLn $ "Loaded complete table with a DayOfWeek type added. Has "
+    <> show (tableLength forestFiresTypedDay)
+    <> " rows."
+  forestFiresTypedDayOM :: Frames.Frame FFInferTypedDayOrMissing <- FStreamly.inCoreAoS $ FStreamly.readTableOpt fFInferTypedDayOrMissingParser forestFiresMissingPath
+  putStrLn $ "Loaded table with missing data, a DayOfWeek type added and relevant columns set to OrMissing if some missing. Has "
+    <> show (tableLength forestFiresTypedDayOM)
     <> " rows."

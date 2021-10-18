@@ -28,7 +28,7 @@ module Frames.Streamly.TH
   , defaultSep
   , defaultIsMissing
   , OrMissingWhen(..)
-  , setMaybeWhen
+  , setOrMissingWhen
   , rowGen
   , rowGenCat
   , modifyColumnSelector
@@ -376,8 +376,8 @@ namesGiven hasHeader names = namedColumnNumberSubset hasHeader m
     m = Map.fromList $ zip [0..] names
 {-# INLINEABLE namesGiven #-}
 
-setMaybeWhen :: (Eq (ICSV.ColumnIdType b)) => ICSV.ColumnIdType b -> ICSV.OrMissingWhen -> RowGen b a -> RowGen b a
-setMaybeWhen cid mw rg = rg { genColumnSelector = newColSelector } where
+setOrMissingWhen :: (Eq (ICSV.ColumnIdType b)) => ICSV.ColumnIdType b -> ICSV.OrMissingWhen -> RowGen b a -> RowGen b a
+setOrMissingWhen cid mw rg = rg { genColumnSelector = newColSelector } where
   colSelector = genColumnSelector rg
   f oldF x = if x /= cid
              then oldF x
@@ -385,7 +385,7 @@ setMaybeWhen cid mw rg = rg { genColumnSelector = newColSelector } where
                     ICSV.Exclude -> ICSV.Exclude
                     ICSV.Include (ctn, _) -> ICSV.Include (ctn, mw)
   newColSelector = ICSV.modifyColumnSelector colSelector f id
-{-# INLINEABLE setMaybeWhen #-}
+{-# INLINEABLE setOrMissingWhen #-}
 
 -- -- | Generate a type for each row of a table. This will be something
 -- -- like @Record ["x" :-> a, "y" :-> b, "z" :-> c]@.
