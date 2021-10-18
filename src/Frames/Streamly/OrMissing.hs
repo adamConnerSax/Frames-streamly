@@ -1,4 +1,3 @@
-{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -29,7 +28,6 @@ import Frames.Streamly.InCore as FStreamly
 import Frames.Streamly.InCore (VectorFor)
 
 import Prelude hiding (Type, lift)
---import Control.Monad.Fail (fail)
 import qualified Data.Text as T
 import Data.Vector.Unboxed.Deriving
 import Data.Vector.Unboxed (Unbox)
@@ -37,9 +35,6 @@ import qualified Data.Vector as Vec
 import qualified Data.Vector.Unboxed as UVec
 import Data.Vector.Unboxed (Vector)
 import Language.Haskell.TH
---import Language.Haskell.TH.Syntax
---import Data.Data (Data)
---import Language.Haskell.TH.Lift
 
 -- | Represent data that may be present or missing in a data-set, but is definitely of type @a@
 -- This is isomorphic to Maybe but a different type is used to avoid orphan instances for
@@ -93,8 +88,7 @@ type instance FStreamly.VectorFor (OrMissing Text) = Vec.Vector
 -- NB: Importing this module unqualified will put the correct things in scope.
 -- NB: This may conflict with other vector imports which also use the @Vector@ name.
 -- @Data a@ is required to avoid requiring @Lift a@ which causes stage-restriction issues.
-derivingOrMissingUnboxVectorFor :: (Unbox a)
-                                => Text -- ^ Unique constructor suffix for the MVector and Vector data families.  Usually the type name.
+derivingOrMissingUnboxVectorFor :: Text -- ^ Unique constructor suffix for the MVector and Vector data families.  Usually the type name.
                                 -> ExpQ -- ^ TH expression for a default value of the type. E.g. @[e|MyType 0|]@
                                 -> DecsQ -- ^ declarations for the @Unbox@ and @VectorFor@ instances
 derivingOrMissingUnboxVectorFor name defAExpQ = do
@@ -121,13 +115,7 @@ derivingOrMissingUnboxVectorFor' :: DecsQ
                                  -> DecsQ -- ^ declarations for the @Unbox@ and @VectorFor@ instances
 derivingOrMissingUnboxVectorFor' underlyingUnboxDecsQ name defAExpQ = do
   let nameQ = conT (mkName $ T.unpack name)
-      typQ = [t|() => OrMissing $(nameQ) -> (Bool, $(nameQ))|]
---      anyAName = mkName "anyA"
-      expNothingQ = tupE [return $ ConE 'False, defAExpQ]
-      srcToRepExpQ = lamE [] $ appE (appE [e|orMissing|] expNothingQ) [e|\x->(True,x)|]
-      repToSrcExpQ = [e|\(b, x) -> if b then Present x else Missing|]
   underlyingUnboxDecs <-  underlyingUnboxDecsQ
-  unboxDecs <- derivingUnbox (T.unpack $ "OrMissing" <> name) typQ srcToRepExpQ repToSrcExpQ
   underlyingVectorDecs <- [d|type instance VectorFor $(nameQ) = Vector|]
-  vectorDecs <- [d|type instance VectorFor (OrMissing $(nameQ)) = Vector|]
-  return $ underlyingUnboxDecs <> underlyingVectorDecs <> unboxDecs <> vectorDecs
+  unboxAndVectorDecs <- derivingOrMissingUnboxVectorFor name defAExpQ
+  return $ underlyingUnboxDecs <> underlyingVectorDecs <> unboxAndVectorDecs --unboxDecs <> vectorDecs
