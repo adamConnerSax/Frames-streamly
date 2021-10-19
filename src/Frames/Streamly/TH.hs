@@ -72,8 +72,8 @@ import qualified Data.Text as T
 import Data.Vinyl
 import Data.Vinyl.TypeLevel (RIndex)
 import Frames.Col ((:->))
-import Frames.ColumnTypeable
-import Frames.ColumnUniverse
+--import Frames.ColumnTypeable
+--import Frames.ColumnUniverse
 import Frames.CSV hiding (ParserOptions(..))
 import Frames.Rec(Record)
 import Frames.Utils
@@ -220,7 +220,7 @@ data RowGen (b :: ColumnId) (a :: [GHC.Type]) =
          , rowTypeName    :: String
            -- ^ The row type that enumerates all
            -- columns.
-         , columnUniverse :: Proxy a
+         , columnParsers :: FSCU.ParseHowRec a
            -- ^ A record field that mentions the phantom type list of
            -- possible column types. Having this field prevents record
            -- update syntax from losing track of the type argument.
@@ -243,13 +243,13 @@ defaultIsMissing t = T.null t || t == "NA"
 -- separator (a comma), infer column types from the default 'Columns'
 -- set of types, and produce a row type with name @Row@.
 rowGen :: FilePath -> RowGen 'ColumnByName FSCU.CommonColumns
-rowGen = RowGen allColumnsAsNamed "" defaultSep "Row" Proxy 1000 defaultIsMissing . SCSV.streamTokenized'
+rowGen = RowGen allColumnsAsNamed "" defaultSep "Row" FSCU.parseableParseHowRec 1000 defaultIsMissing . SCSV.streamTokenized'
 {-# INLINEABLE rowGen #-}
 
 -- | Like 'rowGen', but will also generate custom data types for
 -- 'Categorical' variables with up to 8 distinct variants.
 rowGenCat :: FilePath -> RowGen 'ColumnByName FSCU.CommonColumnsCat
-rowGenCat = RowGen allColumnsAsNamed "" defaultSep "Row" Proxy 1000 defaultIsMissing . SCSV.streamTokenized'
+rowGenCat = RowGen allColumnsAsNamed "" defaultSep "Row" FSCU.parseableParseHowRec  1000 defaultIsMissing . SCSV.streamTokenized'
 {-# INLINEABLE rowGenCat #-}
 
 -- | Update or replace the columnHandler in a RowGen
@@ -420,14 +420,9 @@ tableTypes n fp = tableTypes' (rowGen fp) { rowTypeName = n }
 colNamesP :: Monad m => Streamly.SerialT m [T.Text] -> m [T.Text]
 colNamesP src = fromMaybe [] <$> Streamly.head src
 
---mkRowFilter :: (Text -> Bool) -> [Bool]
---mkRowFilter hs = fmap (\f -> fmap f hs)
-
-
 -- | Generate a type for a row of a table all of whose columns remain
 -- unparsed 'Text' values.
-tableTypesText' :: forall a b c.
-                   (c ~ CoRec ColInfo a, ColumnTypeable c, Monoid c)
+tableTypesText' :: forall a b. ()
                 => RowGen b a -> DecsQ
 tableTypesText' RowGen {..} = do
   firstRow <- runIO $ colNamesP (lineReader separator)
@@ -473,15 +468,11 @@ tableTypesText' RowGen {..} = do
 -- this will declare @type Foo = "foo" :-> Int@, for example, @foo =
 -- rlens \@Foo@, and @foo' = rlens' \@Foo@.
 tableTypes' :: forall ts b.
-               (RMap ts
-               , RApply ts
-               , RFoldMap ts
-               , RecApplicative ts
-               , RPureConstrained FSCT.Parseable ts
+               (FSCT.ColumnTypeable (FSCU.ColType ts)
                , Show (ICSV.ColumnIdType b))
             => RowGen b ts -> DecsQ
 tableTypes' (RowGen {..}) = do
-  (typedCols, pch) <- runIO $ SCSV.readColHeaders genColumnSelector lineSource :: Q ([SCSV.ColTypeInfo ts], ICSV.ParseColumnSelector)
+  (typedCols, pch) <- runIO $ SCSV.readColHeaders columnParsers genColumnSelector lineSource :: Q ([SCSV.ColTypeInfo (FSCU.ColType ts)], ICSV.ParseColumnSelector)
 --  let colDecsFromTypedCols :: (ICSV.ColTypeName, FSCU.ColType ts)
 --      colDecsFromTypedCols
   (colTypes, colDecs) <- (second concat . unzip)
@@ -494,8 +485,6 @@ tableTypes' (RowGen {..}) = do
   optsTy <- sigD optsName [t|ParserOptions|]
   optsDec <- valD (varP optsName) (normalB $ lift opts) []
   return (recTy : optsTy : optsDec : colDecs)
-     -- (:) <$> (tySynD (mkName n) [] (recDec' headers))
-     --     <*> (concat <$> mapM (uncurry $ colDec (T.pack prefix)) headers)
   where lineSource :: Streamly.SerialT IO [Text]
         lineSource = Streamly.take inferencePrefix $ lineReader separator --P.>-> P.take inferencePrefix
         inferMaybe :: ICSV.OrMissingWhen -> FSCU.SomeMissing -> Bool
@@ -503,10 +492,10 @@ tableTypes' (RowGen {..}) = do
           ICSV.NeverMissing -> False
           ICSV.AlwaysPossible -> True
           ICSV.IfSomeMissing -> sm == FSCU.SomeMissing
-        mkColDecs :: SCSV.ColTypeInfo ts -> Q (Type, [Dec])
+        mkColDecs :: SCSV.ColTypeInfo (FSCU.ColType ts) -> Q (Type, [Dec])
         mkColDecs (SCSV.ColTypeInfo colNm colMW colTy) = do
           let safeName = tablePrefix ++ (T.unpack . sanitizeTypeName . ICSV.colTypeName $ colNm) -- ??
-              colTyTH = FSCU.colTypeTH colTy
+              colTyTH = FSCT.colType columnParsers colTy
               isMaybe = inferMaybe colMW (FSCU.colTypeSomeMissing colTy)
           mColNm <- lookupTypeName safeName
           case mColNm of

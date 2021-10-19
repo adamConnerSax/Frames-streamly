@@ -12,7 +12,7 @@ import qualified Frames.Streamly.ColumnTypeable as FStreamly
 import Frames.Streamly.OrMissing
 import qualified Data.Readable as Readable
 import Frames (Readable(fromText))
-import qualified Frames as Readble
+--import qualified Frames as Readble
 
 
 data DayOfWeek = Monday | Tuesday | Wednesday | Thursday | Friday | Saturday | Sunday deriving (Show, Eq, Enum, Bounded)
@@ -39,4 +39,4 @@ instance Readable.Readable DayOfWeek where
   fromText _ = mzero
 
 instance FStreamly.Parseable DayOfWeek where
-  parse = fmap FStreamly.Definitely . Readble.fromText
+  parse = fmap FStreamly.Definitely . Readable.fromText

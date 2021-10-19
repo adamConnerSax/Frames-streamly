@@ -2,15 +2,17 @@
              DerivingVia,
              FlexibleContexts, FlexibleInstances, GADTs, InstanceSigs,
              KindSignatures, LambdaCase, MultiParamTypeClasses,
-             OverloadedStrings, QuasiQuotes, RankNTypes,
+             OverloadedStrings, QuasiQuotes, RankNTypes, RecordWildCards,
              ScopedTypeVariables, StandaloneKindSignatures,
              TemplateHaskell, TupleSections, TypeApplications,
              TypeFamilies, TypeOperators, UndecidableInstances #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Frames.Streamly.ColumnUniverse (
-  CoRec{-, Columns, ColumnUniverse, ColInfo -}
-  , CommonColumns, CommonColumnsCat {-,  parsedTypeRep -}
-  , tryParseAll {-, bestRep-}
+  CommonColumns
+  , CommonColumnsCat
+  , ParseHowRec
+  , parseableParseHowRec
+  , tryParseAll
   , CanParseAs(..)
   , ParseResult(..)
   , parseResult
@@ -31,29 +33,35 @@ import Data.Semigroup (Semigroup((<>)))
 #endif
 import qualified Data.Text as T
 import Data.Vinyl
-import Data.Vinyl.CoRec
 import Data.Vinyl.Functor
---import Data.Vinyl.TypeLevel (RIndex, NatToInt)
 import Frames.Streamly.ColumnTypeable
 import Frames.Streamly.Categorical
 import Language.Haskell.TH
 
--- | Extract a function to test whether some value of a given type
--- could be read from some 'T.Text'.
-inferParseable :: Parseable a => T.Text -> (Maybe :. Parsed) a
-inferParseable = Compose . parse
+-- | Use a @ParseHow@ to (possibly) parse a given @Text@ as a value of type @a@
+inferParseable :: ParseHow a -> T.Text -> (Maybe :. Parsed) a
+inferParseable ParseHow{..} = Compose . phParse
+{-# INLINE inferParseable #-}
 
--- | Helper to call 'inferParseable' on variants of a 'CoRec'.
-inferParseable' :: Parseable a => (((->) T.Text) :. (Maybe :. Parsed)) a
-inferParseable' = Compose inferParseable
+-- | Helper to call 'inferParseablePH' on a 'Rec'.
+inferParseable' :: ParseHow a -> (((->) T.Text) :. (Maybe :. Parsed)) a
+inferParseable' ph = Compose $ inferParseable ph
+{-# INLINE inferParseable' #-}
 
 -- * Record Helpers
 
-tryParseAll :: forall ts. (RecApplicative ts, RPureConstrained Parseable ts)
-            => T.Text -> Rec (Maybe :. Parsed) ts
-tryParseAll = rtraverse getCompose funs
+type ParseHowRec ts = Rec ParseHow ts
+
+parseableParseHowRec :: RPureConstrained Parseable ts => ParseHowRec ts
+parseableParseHowRec = rpureConstrained @Parseable parseableParseHow
+{-# INLINEABLE parseableParseHowRec #-}
+
+tryParseAll :: forall ts. (RMap ts)
+            => ParseHowRec ts -> T.Text -> Rec (Maybe :. Parsed) ts
+tryParseAll phR = rtraverse getCompose funs
   where funs :: Rec (((->) T.Text) :. (Maybe :. Parsed)) ts
-        funs = rpureConstrained @Parseable inferParseable'
+        funs = rmap inferParseable' phR
+{-# INLINABLE tryParseAll #-}
 
 -- * Common Columns
 
@@ -81,41 +89,29 @@ instance Semigroup SomeMissing where
   NoneMissing <> NoneMissing = NoneMissing
 
 data CanParseAs p = YesParse (Parsed p) | NoParse
-{-
-data CanParseAs p where
-  YesParse :: Parseable p => Parsed p -> CanParseAs p
-  NoParse :: CanParseAs p
--}
-{-
-instance Functor CanParseAs where
-  fmap f (YesParse p) = YesParse (fmap f p)
-  fmap _ NoParse = NoParse
--}
 
 -- this is semigroup like but should not escape this module because of dropping rhs value
 -- so we just make it a function which we do not export
-combineCanParseAs :: Parseable p => CanParseAs p -> CanParseAs p -> CanParseAs p
-combineCanParseAs (YesParse x) (YesParse y) = maybe NoParse YesParse $ parseCombine x y
-combineCanParseAs _ _ = NoParse
+combineCanParseAs :: ParseHow p -> CanParseAs p -> CanParseAs p -> CanParseAs p
+combineCanParseAs ParseHow{..} (YesParse x) (YesParse y) = maybe NoParse YesParse $ phParseCombine x y
+combineCanParseAs _ _ _ = NoParse
 
 data ParseResult ts = MissingData | ParseResult (Rec CanParseAs ts)
 
 parseResult' :: (RecApplicative ts
                 , RMap ts
-                , RApply ts
-                , RPureConstrained Parseable ts)
-             => (Text -> Bool) -> Text -> ParseResult ts
-parseResult' missingF t
+                , RApply ts)
+               => ParseHowRec ts -> (Text -> Bool) -> Text -> ParseResult ts
+parseResult' phRec missingF t
   | missingF t = MissingData
-  | otherwise = ParseResult $ recParsedToRecCanParseAs $ tryParseAll t
+  | otherwise = ParseResult $ recParsedToRecCanParseAs $ tryParseAll phRec t
 {-# INLINEABLE parseResult' #-}
 
 parseResult ::  (RecApplicative ts
-                , RMap ts
-                , RApply ts
-                , RPureConstrained Parseable ts)
-                => Text -> ParseResult ts
-parseResult = parseResult' defaultMissing where
+                  , RMap ts
+                  , RApply ts)
+                => ParseHowRec ts -> Text -> ParseResult ts
+parseResult phR = parseResult' phR defaultMissing where
   defaultMissing t = T.null t || t == "NA"
 {-# INLINEABLE parseResult #-}
 
@@ -134,42 +130,44 @@ data ColType ts = UnknownColType SomeMissing
 type ColTH = Either (String -> Q [Dec]) Type
 type ColTHF = Lift (->) CanParseAs (Const (Maybe ColTH))
 
-colTHs :: (RecApplicative ts
-          , RPureConstrained Parseable ts)
-       => Rec (ColTHF) ts
-colTHs = rpureConstrained @Parseable f where
-  f :: forall a.Parseable a => ColTHF a --CanParseAs a -> (Const ColTH) a
-  f = Lift $ \x -> Const $ case x of
+colTHs :: RMap ts
+       => ParseHowRec ts
+       -> Rec (ColTHF) ts
+colTHs = rmap f where
+  f :: ParseHow a -> ColTHF a
+  f ParseHow{..} =  Lift $ \x -> Const $ case x of
     NoParse ->  Nothing
-    YesParse a -> Just $ getConst $ representableAsType a
+    YesParse a -> Just $ phRepresentableAsType a
 {-# INLINE colTHs #-}
 
 fallbackText :: ColTH
 fallbackText = Right (ConT (mkName "Text"))
 
-
 instance ( RFoldMap ts
          , RMap ts
          , RApply ts
-         , RecApplicative ts
-         , RPureConstrained Parseable ts) => ColumnTypeable (ColType ts) where
+         , RecApplicative ts)
+     => ColumnTypeable (ColType ts) where
+  type ParseType (ColType ts) = ParseResult ts
+  type Parsers (ColType ts) = ParseHowRec ts
   colType = colTypeTH
   {-# INLINEABLE colType #-}
-  inferType isMissing t = case parseResult' isMissing t of
-    MissingData -> UnknownColType SomeMissing
-    ParseResult x -> KnownColType (NoneMissing, x)
+  inferType = parseResult'
   {-# INLINEABLE inferType #-}
-
+  initialColType = UnknownColType NoneMissing
+  {-# INLINE initialColType #-}
+  updateWithParse = addParsedCell
+  {-# INLINE updateWithParse #-}
 
 colTypeTH :: (RecApplicative ts
              , RFoldMap ts
-             , RApply ts
-             ,  RPureConstrained Parseable ts)
-          => ColType ts -> Either (String -> Q [Dec]) Type
-colTypeTH t =  case t of
+             , RMap ts
+             , RApply ts)
+          => ParseHowRec ts -> ColType ts -> Either (String -> Q [Dec]) Type
+colTypeTH phR t =  case t of
     UnknownColType _ -> fallbackText
     KnownColType (_,ts) ->
-      fromMaybe fallbackText $ getFirst $ rfoldMap (First . getConst) $ rapply colTHs ts
+      fromMaybe fallbackText $ getFirst $ rfoldMap (First . getConst) $ rapply (colTHs phR) ts
 
 colTypeSomeMissing :: ColType ts -> SomeMissing
 colTypeSomeMissing (UnknownColType x) = x
@@ -180,19 +178,27 @@ inferredToParseResult (UnknownColType _) = MissingData
 inferredToParseResult (KnownColType (_, x)) = ParseResult x
 {-# INLINE inferredToParseResult #-}
 
-initialColType :: ColType ts
-initialColType = UnknownColType NoneMissing
-{-# INLINE initialColType #-}
-
-
-addParsedCell :: (RMap ts, RApply ts, RPureConstrained Parseable ts) => ColType ts -> ParseResult ts -> ColType ts
-addParsedCell (UnknownColType _) MissingData = UnknownColType SomeMissing
-addParsedCell (UnknownColType sm) (ParseResult pRec) = KnownColType (sm, pRec)
-addParsedCell (KnownColType (_, ctRec)) MissingData = KnownColType (SomeMissing, ctRec)
-addParsedCell (KnownColType (sm, ctRec)) (ParseResult pRec) = KnownColType (sm, newCtRec)
+addParsedCell :: (RMap ts, RApply ts) => ParseHowRec ts -> ColType ts -> ParseResult ts -> ColType ts
+addParsedCell _ (UnknownColType _) MissingData = UnknownColType SomeMissing
+addParsedCell _ (UnknownColType sm) (ParseResult pRec) = KnownColType (sm, pRec)
+addParsedCell _ (KnownColType (_, ctRec)) MissingData = KnownColType (SomeMissing, ctRec)
+addParsedCell phR (KnownColType (sm, ctRec)) (ParseResult pRec) = KnownColType (sm, newCtRec)
   where
-    newCtRec = rzipWithC @Parseable combineCanParseAs pRec ctRec
+    newCtRec = rzipWith3 combineCanParseAs phR pRec ctRec
 {-# INLINEABLE addParsedCell #-}
+
+rzipWith3 :: forall f g h q ts. (RMap ts, RApply ts)
+          => (forall x. f x -> g x -> h x -> q x)
+          -> Rec f ts
+          -> Rec g ts
+          -> Rec h ts
+          -> Rec q ts
+rzipWith3 f fs gs = rapply appliedFG where
+  appliedFG :: Rec (Lift (->) h q) ts
+  appliedFG = rzipWith liftFG fs gs where
+    liftFG :: f x -> g x -> Lift (->) h q x
+    liftFG fx gx = Lift $ f fx gx
+{-# INLINEABLE rzipWith3 #-}
 
 data SimpleDict c a where
   SimpleDict :: c a => SimpleDict c a
@@ -208,130 +214,3 @@ rzipWithC zipF t1 = rapply (g dicts t1)  where
     h c x1 = case c of
       SimpleDict -> Lift $ \x2 -> zipF x1 x2
 {-# INLINEABLE rzipWithC #-}
-
-{-
--- * Column Type Inference
-
--- | Information necessary for synthesizing row types and comparing
--- types.
-newtype ColInfo a = ColInfo (Either (String -> Q [Dec]) Type, Parsed a)
-instance Show a => Show (ColInfo a) where
-  show (ColInfo (t,p)) = "(ColInfo {"
-                         ++ either (const "cat") show t
-                         ++ ", "
-                         ++ show (discardConfidence p) ++"})"
-
-parsedToColInfo :: Parseable a => Parsed a -> ColInfo a
-parsedToColInfo x = case getConst rep of
-                      Left dec -> ColInfo (Left dec, x)
-                      Right ty ->
-                        ColInfo (Right ty, x)
-  where rep = representableAsType x
-
-parsedTypeRep :: ColInfo a -> Parsed Type
-parsedTypeRep (ColInfo (t,p)) =
-  const (either (const (ConT (mkName "Categorical"))) id t) <$> p
-
--- | Map 'Type's we know about (with a special treatment of
--- synthesized types for categorical variables) to 'Int's for ordering
--- purposes.
-orderParsePriorities :: Parsed (Maybe Type) -> Maybe Int
-orderParsePriorities x =
-  case discardConfidence x of
-    Nothing -> Just 1 -- categorical variable
-    Just t
-      | t == tyText -> Just (0 + uncertainty)
-      | t == tyDbl -> Just (2 + uncertainty)
-      | t == tyInt -> Just (3 + uncertainty)
-      | t == tyBool -> Just (4 + uncertainty)
-      | otherwise -> Nothing
-  where tyText = ConT (mkName "Text")
-        tyDbl = ConT (mkName "Double")
-        tyInt = ConT (mkName "Int")
-        tyBool = ConT (mkName "Bool")
-        uncertainty = case x of Definitely _ -> 0; Possibly _ -> 5
-
--- | We use a join semi-lattice on types for representations. The
- -- bottom of the lattice is effectively an error (we have nothing to
--- represent), @Bool < Int@, @Int < Double@, and @forall n. n <= Text@.
---
--- The high-level goal here is that we will pick the "greater" of two
--- choices in 'bestRep'. A 'Definitely' parse result is preferred over
--- a 'Possibly' parse result. If we have two distinct 'Possibly' parse
--- results, we give up. If we have two distinct 'Definitely' parse
--- results, we are in dangerous waters: all data is parseable at
--- /both/ types, so which do we default to? The defaulting choices
--- made here are described in the previous paragraph. If there is no
--- defaulting rule, we give up (i.e. use 'T.Text' as a
--- representation).
-lubTypes :: Parsed (Maybe Type) -> Parsed (Maybe Type) -> Maybe Ordering
-lubTypes x y = compare <$> orderParsePriorities y <*> orderParsePriorities x
-
-instance (T.Text ∈ ts, RPureConstrained Parseable ts) => Monoid (CoRec ColInfo ts) where
-  mempty = CoRec (ColInfo ( Right (ConT (mkName "Text")), Possibly T.empty))
-  mappend x y = x <> y
-
--- | A helper For the 'Semigroup' instance below.
-mergeEqTypeParses :: forall ts. (RPureConstrained Parseable ts, T.Text ∈ ts)
-                  => CoRec ColInfo ts -> CoRec ColInfo ts -> CoRec ColInfo ts
-mergeEqTypeParses x@(CoRec _) y = fromMaybe definitelyText
-                                $ coRecTraverse getCompose
-                                                (coRecMapC @Parseable aux x)
-  where definitelyText = CoRec (ColInfo (Right (ConT (mkName "Text")), Definitely T.empty))
-        aux :: forall a. (Parseable a, NatToInt (RIndex a ts))
-            => ColInfo a -> (Maybe :. ColInfo) a
-        aux (ColInfo (_, pX)) =
-          case asA' @a y of
-            Nothing -> Compose Nothing
-            Just (ColInfo (_, pY)) ->
-              maybe (Compose Nothing)
-                    (Compose . Just . parsedToColInfo)
-                    (parseCombine pX pY)
-
-instance (T.Text ∈ ts, RPureConstrained Parseable ts)
-  => Semigroup (CoRec ColInfo ts) where
-  x@(CoRec (ColInfo (tyX, pX))) <> y@(CoRec (ColInfo (tyY, pY))) =
-    case lubTypes (const (either (const Nothing) Just tyX) <$> pX)
-                  (const (either (const Nothing) Just tyY) <$> pY) of
-      Just GT -> x
-      Just LT -> y
-      Just EQ -> mergeEqTypeParses x y
-      Nothing -> mempty
-
--- | Find the best (i.e. smallest) 'CoRec' variant to represent a
--- parsed value. For inspection in GHCi after loading this module,
--- consider this example:
---
--- >>> :set -XTypeApplications
--- >>> :set -XOverloadedStrings
--- >>> import Data.Vinyl.CoRec (foldCoRec)
--- >>> foldCoRec parsedTypeRep (bestRep @CommonColumns "2.3")
--- Definitely Double
-bestRep :: forall ts.
-           (RPureConstrained Parseable ts,
-            FoldRec ts ts,
-            RecApplicative ts, T.Text ∈ ts)
-        => T.Text -> CoRec ColInfo ts
-bestRep t
-  | T.null t || t == "NA" = (CoRec (parsedToColInfo (Possibly T.empty)))
-  | otherwise = coRecMapC @Parseable parsedToColInfo
-              . fromMaybe (CoRec (Possibly T.empty :: Parsed T.Text))
-              . firstField -- choose first non-Nothing field
-              . (tryParseAll :: T.Text -> Rec (Maybe :. Parsed) ts)
-              $ t
-{-# INLINABLE bestRep #-}
-
-instance (RPureConstrained Parseable ts, FoldRec ts ts,
-          RecApplicative ts, T.Text ∈ ts) =>
-    ColumnTypeable (CoRec ColInfo ts) where
-  colType (CoRec (ColInfo (t, _))) = t
-  {-# INLINE colType #-}
-  inferType = bestRep
-  {-# INLINABLE inferType #-}
-
-#if !MIN_VERSION_vinyl(0,11,0)
-instance forall ts. (RPureConstrained Show ts, RecApplicative ts)
-  => Show (CoRec ColInfo ts) where
-  show x = "(Col " ++ onCoRec @Show show x ++")"
-#endif
--}

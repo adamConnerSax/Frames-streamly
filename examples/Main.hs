@@ -10,6 +10,7 @@
 module Main where
 
 import qualified DemoPaths as Paths
+import DemoPaths (Month)
 import DayOfWeek
 import qualified Frames
 --import Frames.Streamly.Categorical ()
@@ -29,7 +30,7 @@ import qualified Control.Foldl as FL
 import Data.List (intercalate)
 import DemoPaths (cesPath)
 
-FStreamly.tableTypes "ForestFires" (Paths.thPath Paths.forestFiresPath)
+FStreamly.tableTypes' Paths.ffBaseRowGen
 FStreamly.tableTypes' Paths.ffColSubsetRowGen
 FStreamly.tableTypes' Paths.ffColSubsetRowGenCat
 --FStreamly.tableTypes' Paths.cesRowGen
@@ -37,6 +38,7 @@ FStreamly.tableTypes' Paths.ffInferOrMissingRG
 FStreamly.tableTypes' Paths.ffInferOrMissingCatRG
 FStreamly.tableTypes' Paths.ffInferTypedDayRG
 FStreamly.tableTypes' Paths.ffInferTypedDayOrMissingRG
+FStreamly.tableTypes' Paths.ffInferTypedDayMonthRG
 
 
 main :: IO ()
@@ -44,10 +46,10 @@ main = do
   forestFiresPath <- Paths.usePath Paths.forestFiresPath
   forestFires :: Frames.Frame ForestFires <- FStreamly.inCoreAoS $ FStreamly.readTableOpt forestFiresParser forestFiresPath
   forestFiresColSubset :: Frames.Frame FFColSubset <- FStreamly.inCoreAoS $ FStreamly.readTableOpt fFColSubsetParser forestFiresPath
-  let filterAndMap :: ForestFires -> Maybe (Frames.Record [X, Y, Month, Day, Temp, Wind])
-      filterAndMap r = if Frames.rgetField @Day r == "fri" then (Just $ Frames.rcast r) else Nothing
+  let filterAndMap :: ForestFires -> Maybe (Frames.Record [FFX, FFY, FFMonth, FFDay, FFTemp, FFWind])
+      filterAndMap r = if Frames.rgetField @FFDay r == "fri" then (Just $ Frames.rcast r) else Nothing
       forestFires' = FStreamly.mapMaybe filterAndMap forestFires
-      forestFiresColSubset' = FStreamly.filter  (\r -> Frames.rgetField @Day r == "fri") forestFiresColSubset
+      forestFiresColSubset' = FStreamly.filter  (\r -> Frames.rgetField @FFDay r == "fri") forestFiresColSubset
       formatRow = FStreamly.formatWithShow
               V.:& FStreamly.formatWithShow
               V.:& FStreamly.formatTextAsIs

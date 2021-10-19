@@ -1,11 +1,11 @@
 {-# LANGUAGE AllowAmbiguousTypes, BangPatterns,
              DefaultSignatures, FlexibleInstances,
              LambdaCase,
-             MultiParamTypeClasses, ScopedTypeVariables
-             , TemplateHaskell #-}
+             MultiParamTypeClasses, RankNTypes, ScopedTypeVariables
+             , TemplateHaskell, TypeFamilies #-}
 module Frames.Streamly.ColumnTypeable where
 
-import Prelude hiding (Const, Type)
+import Prelude hiding (Const(..), Type)
 import Frames.Streamly.OrMissing
 
 --import Control.Monad (MonadPlus)
@@ -89,46 +89,51 @@ instance Parseable Double where
   parse = fmap Definitely . fromText . T.filter (/= ',')
 instance Parseable T.Text where
 
-q :: Parsed (OrMissing a) -> OrMissing (Parsed a)
-q (Possibly Missing) = Missing
-q (Possibly (Present a)) = Present (Possibly a)
-q (Definitely Missing) = Missing
-q (Definitely (Present a)) = Present (Definitely a)
-
-instance (Typeable a, Parseable a) => Parseable (OrMissing a) where
-  parse t = return $ maybe (Definitely Missing) (fmap Present) $ parse t
-  parseCombine p1 p2 = case (q p1, q p2) of
-    (Missing, Missing) -> return $ Definitely Missing
-    (Present x, Missing) -> return $ fmap Present x
-    (Missing, Present x) -> return $ fmap Present x
-    (Present x, Present y) -> fmap Present <$> parseCombine x y
-
+-- @adamConnerSax new/changed stuff
 
 -- | This class relates a universe of possible column types to Haskell
 -- types, and provides a mechanism to infer which type best represents
 -- some textual data.
 class ColumnTypeable a where
-  colType :: a -> Either (String -> Q [Dec]) Type
-  inferType :: (T.Text -> Bool) -> T.Text -> a
+  type ParseType a
+  type Parsers a
+  colType :: Parsers a -> a -> Either (String -> Q [Dec]) Type
+  inferType :: Parsers a -> (T.Text -> Bool) -> T.Text -> ParseType a
+  initialColType :: a
+  updateWithParse :: Parsers a -> a -> ParseType a -> a
 
--- @adamConnerSax new stuff
+instance (Typeable a, Parseable a) => Parseable (OrMissing a) where
+  parse t = return $ maybe (Definitely Missing) (fmap Present) $ parse t
+  parseCombine p1 p2 = case (commute p1, commute p2) of
+    (Missing, Missing) -> return $ Definitely Missing
+    (Present x, Missing) -> return $ fmap Present x
+    (Missing, Present x) -> return $ fmap Present x
+    (Present x, Present y) -> fmap Present <$> parseCombine x y
+    where
+      commute :: Parsed (OrMissing a) -> OrMissing (Parsed a)
+      commute (Possibly Missing) = Missing
+      commute (Possibly (Present a)) = Present (Possibly a)
+      commute (Definitely Missing) = Missing
+      commute (Definitely (Present a)) = Present (Definitely a)
 
+-- | Record -of-functions for column parsing.
+data ParseHow a = ParseHow
+  { phParse :: forall m. MonadPlus m =>  T.Text -> m (Parsed a)
+  , phParseCombine ::  forall m. MonadPlus m => Parsed a -> Parsed a -> m (Parsed a)
+  , phRepresentableAsType :: Parsed a -> Either (String -> Q [Dec]) Type
+  }
 
-{-
-class CanParseAs a b where
-  canParseAs :: Bool
-  default canParseAs :: Bool
-  canParseAs = False
+-- | Generate a 'ParseHow' for a any type with a 'Parseable' instance.
+parseableParseHow :: Parseable a => ParseHow a
+parseableParseHow = ParseHow parse parseCombine (getConst . representableAsType)
+{-# INLINEABLE parseableParseHow #-}
 
-instance CanParseAs a Text where
-  canParseAs = True
-
-instance CanParseAs Int Double where
-  canParseAs = True
-
-instance CanParseAs Int32 Double where
-  canParseAs = True
-
-instance CanParseAs Int64 Double where
-  canParseAs = True
--}
+-- | Generate a 'ParseHow' for any type with a 'Typeable' instance and a parsing function  of
+-- the form @MonadPlus m => Text -> m Bool@.  @m@ can be any MonadPlus, e.g., @Maybe@ or @Either@.
+simpleParseHow :: forall a . Typeable a => (Text -> Maybe a) -> ParseHow a
+simpleParseHow g = ParseHow p c r where
+  p :: forall n. MonadPlus n =>  T.Text -> n (Parsed a) -- this sig required for MonadPlus constraint
+  p = maybe mzero (return . Definitely) . g
+  c pa _ = return pa
+  r _ = Right (ConT (mkName (show (typeRep (Proxy :: Proxy a)))))
+{-# INLINEABLE simpleParseHow #-}

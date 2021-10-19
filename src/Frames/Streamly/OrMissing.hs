@@ -110,7 +110,7 @@ derivingOrMissingUnboxVectorFor name defAExpQ = do
 -- NB: Importing this module *unqualified* will put the correct things in scope.
 -- NB: This may conflict with other vector imports which also use the @Vector@ name.
 derivingOrMissingUnboxVectorFor' :: DecsQ
-                                 -> Text -- ^ Unique constructor suffix for the MVector and Vector data families.  Usually the type name.
+                                 -> Text -- ^ Unique constructor suffix for the MVector and Vector data families.  Must be the type name.
                                  -> ExpQ -- ^ TH expression for a default value of the type. E.g. @[e|EnumA|]@
                                  -> DecsQ -- ^ declarations for the @Unbox@ and @VectorFor@ instances
 derivingOrMissingUnboxVectorFor' underlyingUnboxDecsQ name defAExpQ = do

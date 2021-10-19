@@ -836,47 +836,53 @@ foldAllM step start extract = do
 
 -- | Infer column types from a prefix (up to 1000 lines) of a CSV
 -- file.
-prefixInference :: (MonadThrow m
+prefixInference :: forall a m.(MonadThrow m
                    , Monad m
-                   , V.RMap ts
-                   , V.RApply ts
-                   , V.RFoldMap ts
-                   , V.RecApplicative ts
-                   , V.RPureConstrained FSCT.Parseable ts)
-                => (Text -> Bool)
+                   , FSCT.ColumnTypeable a
+--                   , V.RMap ts
+--                   , V.RApply ts
+--                   , V.RFoldMap ts
+--                   , V.RecApplicative ts
+--                   , V.RPureConstrained FSCT.Parseable ts
+                   )
+                => FSCT.Parsers a
+                -> (Text -> Bool)
                 -> Maybe [Bool]
-                -> StreamState Streamly.SerialT m [T.Text] [FSCU.ColType ts]
-prefixInference isMissing rF = do
-  let inferCols = fmap (FSCU.parseResult' isMissing)
+                -> StreamState Streamly.SerialT m [T.Text] [a] --FSCU.ColType ts]
+prefixInference parsers isMissing rF = do
+  let inferCols = fmap (FSCT.inferType @a parsers isMissing) -- need type application here to know what col-type to infer
   rowFilterStreamState rF
 
   peek >>= \case
     Nothing -> lift $ throwM $ EmptyStreamException
     Just _ -> foldAll
-                 (\ts -> zipWith FSCU.addParsedCell ts . inferCols)
-                 (repeat FSCU.initialColType)
+                 (\ts -> zipWith (FSCT.updateWithParse parsers) ts . inferCols)
+                 (repeat FSCT.initialColType)
                  id
 {-# INLINEABLE prefixInference #-}
 
-data ColTypeInfo ts = ColTypeInfo { colTypeName :: ICSV.ColTypeName, orMissingWhen :: ICSV.OrMissingWhen, colBaseType :: FSCU.ColType ts}
+data ColTypeInfo a = ColTypeInfo { colTypeName :: ICSV.ColTypeName, orMissingWhen :: ICSV.OrMissingWhen, colBaseType :: a}
 
 -- | Extract column names and inferred types from a CSV file.
-readColHeaders :: forall ts b m.
+readColHeaders :: forall a b m.
                   (Show (ICSV.ColumnIdType b)
                   , Monad m
                   , MonadThrow m
-                  , V.RMap ts
+                  , FSCT.ColumnTypeable a
+{-                  , V.RMap ts
                   , V.RApply ts
                   , V.RFoldMap ts
                   , V.RecApplicative ts
                   , V.RPureConstrained FSCT.Parseable ts
+-}
                   )
-               => ICSV.RowGenColumnSelector b-- headerOverride
+               => FSCT.Parsers a
+               -> ICSV.RowGenColumnSelector b-- headerOverride
                -> Streamly.SerialT m [Text]
-               -> m ([ColTypeInfo ts], ICSV.ParseColumnSelector)
-readColHeaders rgColHandler = evalStateT $ do
+               -> m ([ColTypeInfo a], ICSV.ParseColumnSelector)
+readColHeaders parsers rgColHandler = evalStateT $ do
   let csToBool =  (/= ICSV.Exclude)
-  (headerRow, pch, rF) <- case rgColHandler of
+  (headerRow :: [(ICSV.ColTypeName , ICSV.OrMissingWhen)], pch :: ICSV.ParseColumnSelector, rF :: Maybe [Bool]) <- case rgColHandler of
     ICSV.GenUsingHeader f mrF -> do
       allHeaders <- ICSV.HeaderText <<$>> (draw >>= maybe err return)
       lift $ checkColumnIds mrF allHeaders
@@ -904,9 +910,9 @@ readColHeaders rgColHandler = evalStateT $ do
           parseColHeader = ICSV.ParseWithoutHeader allColStates
       return (includedInfo, parseColHeader, Just allBools)
   let isMissing t = T.null t || t == "NA"
-      assembleCTI :: (ICSV.ColTypeName, ICSV.OrMissingWhen) -> FSCU.ColType ts -> ColTypeInfo ts
+      assembleCTI :: (ICSV.ColTypeName, ICSV.OrMissingWhen) -> a -> ColTypeInfo a
       assembleCTI (a, b) c = ColTypeInfo a b c
-  colTypes <- prefixInference isMissing rF
+  colTypes <- prefixInference parsers isMissing rF
   unless (length headerRow == length colTypes) $ errNumColumns headerRow colTypes
   return (zipWith assembleCTI headerRow colTypes, pch)
   where err :: StreamState Streamly.SerialT m [Text] [Text]  = lift $ throwM EmptyStreamException
