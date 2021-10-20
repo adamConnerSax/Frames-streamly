@@ -144,11 +144,16 @@ instance (Typeable a, Parseable a) => Parseable (OrMissing a) where
       commute (Definitely (Present a)) = Present (Definitely a)
   {-# INLINEABLE parseCombine #-}
 
--- | Record -of-functions for column parsing.
+-- | Record-of-functions for column parsing.
 data ParseHow a = ParseHow
   { phParse :: forall m. MonadPlus m =>  T.Text -> m (Parsed a)
+    -- ^ attempt to parse the given 'Text' into the type @a@
   , phParseCombine ::  forall m. MonadPlus m => Parsed a -> Parsed a -> m (Parsed a)
+  -- ^ check that two parsed values of type a are both consistent with being of type @a@
   , phRepresentableAsType :: Parsed a -> Either (String -> Q [Dec]) Type
+  -- ^ Template-Haskell for declaring type @a@.  Either a function to produce a set of
+  -- declarations (for 'Categorical') or the template-haskell 'Type' which can easily be
+  -- turned into a declaration.
   }
 
 -- | Generate a 'ParseHow' for a any type with a 'Parseable' instance.
@@ -157,7 +162,7 @@ parseableParseHow = ParseHow parse parseCombine (getConst . representableAsType)
 {-# INLINEABLE parseableParseHow #-}
 
 -- | Generate a 'ParseHow' for any type with a 'Typeable' instance and a parsing function  of
--- the form @MonadPlus m => Text -> m Bool@.  @m@ can be any MonadPlus, e.g., @Maybe@ or @Either@.
+-- the form @Text -> Maybe a@.
 simpleParseHow :: forall a . Typeable a => (Text -> Maybe a) -> ParseHow a
 simpleParseHow g = ParseHow p c r where
   p :: forall n. MonadPlus n =>  T.Text -> n (Parsed a) -- this sig required for MonadPlus constraint

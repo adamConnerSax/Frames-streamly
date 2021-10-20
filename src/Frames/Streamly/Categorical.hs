@@ -23,7 +23,7 @@ import Data.Vector.Unboxed.Deriving
 import Data.Vinyl.Functor (Const(..))
 --import Data.Word
 import qualified Data.Vector.Unboxed as VU
-import Frames.Streamly.ColumnTypeable
+import Frames.Streamly.ColumnTypeable -- this is, I think, the only change, so we don't need to update this module at all.
 import Frames.InCore (VectorFor)
 import Frames.ShowCSV
 import Frames.Utils

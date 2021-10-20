@@ -786,19 +786,19 @@ useRowFilter = maybe id f  where
 {-# INLINEABLE useRowFilter #-}
 
 throwIfEmpty :: MonadThrow m => Streamly.SerialT m a -> m ()
-throwIfEmpty s = Streamly.null s >>= \b -> when b (throwM EmptyStreamException)
+throwIfEmpty s = Streamly.null s >>= flip when (throwM EmptyStreamException)
 {-# INLINE throwIfEmpty #-}
 
-prefixInferenceS :: forall a m.(MonadThrow m
-                   , Monad m
-                   , FSCT.ColumnTypeable a
-                   )
+prefixInference :: forall a m.(MonadThrow m
+                              , Monad m
+                              , FSCT.ColumnTypeable a
+                              )
                 => FSCT.Parsers a
                 -> (Text -> Bool)
                 -> Maybe [Bool]
                 -> Streamly.SerialT m [T.Text]
                 -> m [a]
-prefixInferenceS parsers isMissing rF s = do
+prefixInference parsers isMissing rF s = do
   throwIfEmpty s
   let inferCols = fmap (FSCT.inferType @a parsers isMissing) -- need type application here to know what col-type to infer
       step ts = zipWith (FSCT.updateWithParse parsers) ts . inferCols
@@ -809,7 +809,7 @@ prefixInferenceS parsers isMissing rF s = do
   let fld = Streamly.Fold.mkPure step start id
 #endif
   Streamly.fold fld $ Streamly.map (useRowFilter rF) s
-{-# INLINEABLE prefixInferenceS #-}
+{-# INLINEABLE prefixInference #-}
 
 data ColTypeInfo a = ColTypeInfo { colTypeName :: ICSV.ColTypeName, orMissingWhen :: ICSV.OrMissingWhen, colBaseType :: a}
 
@@ -861,7 +861,7 @@ readColHeaders parsers rgColHandler s =  do
   let isMissing t = T.null t || t == "NA"
       assembleCTI :: (ICSV.ColTypeName, ICSV.OrMissingWhen) -> a -> ColTypeInfo a
       assembleCTI (a, b) c = ColTypeInfo a b c
-  colTypes <- prefixInferenceS parsers isMissing rF inferS
+  colTypes <- prefixInference parsers isMissing rF inferS
   unless (length headerRow == length colTypes) $ errNumColumns headerRow colTypes
   return (zipWith assembleCTI headerRow colTypes, pch)
   where errNumColumns hs cts =

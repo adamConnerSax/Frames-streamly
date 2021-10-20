@@ -23,7 +23,6 @@ module Frames.Streamly.ColumnUniverse (
   , colTypeSomeMissing
   , addParsedCell
   , initialColType
-  , inferredToParseResult
 ) where
 
 import Prelude hiding (Compose(..), Type, getConst, show, Const(..))
@@ -149,7 +148,7 @@ type ColTHF = Lift (->) CanParseAs (Const (Maybe ColTH))
 -- required to declare that type.
 colTHs :: RMap ts
        => ParseHowRec ts
-       -> Rec (ColTHF) ts
+       -> Rec ColTHF ts
 colTHs = rmap f where
   f :: ParseHow a -> ColTHF a
   f ParseHow{..} =  Lift $ \x -> Const $ case x of
@@ -166,8 +165,7 @@ fallbackText = Right (ConT (mkName "Text"))
 
 instance ( RFoldMap ts
          , RMap ts
-         , RApply ts
-         , RecApplicative ts)
+         , RApply ts)
      => ColumnTypeable (ColType ts) where
   type ParseType (ColType ts) = ParseResult ts
   type Parsers (ColType ts) = ParseHowRec ts
@@ -190,8 +188,7 @@ instance ( RFoldMap ts
 -- should put your `Categorical'(s) (in increasing order of size) right before 'Text'
 -- at the end of the list.  But if you have columns using integers to code Categorical
 -- values you might want a Categorical *before* 'Int'.
-colTypeTH :: (RecApplicative ts
-             , RFoldMap ts
+colTypeTH :: ( RFoldMap ts
              , RMap ts
              , RApply ts)
           => ParseHowRec ts -> ColType ts -> Either (String -> Q [Dec]) Type
@@ -201,15 +198,16 @@ colTypeTH phR t =  case t of
       fromMaybe fallbackText $ getFirst $ rfoldMap (First . getConst) $ rapply (colTHs phR) ts
 {-# INLINEABLE colTypeTH #-}
 
+-- | Extract the 'SomeMissing' flag from a 'ColType'
 colTypeSomeMissing :: ColType ts -> SomeMissing
 colTypeSomeMissing (UnknownColType x) = x
 colTypeSomeMissing (KnownColType (x, _)) = x
+{-# INLINE colTypeSomeMissing #-}
 
-inferredToParseResult :: ColType ts -> ParseResult ts
-inferredToParseResult (UnknownColType _) = MissingData
-inferredToParseResult (KnownColType (_, x)) = ParseResult x
-{-# INLINE inferredToParseResult #-}
-
+-- | Given a @Rec ParseHow ts@, combine previous parsing information, a @ColType ts@ representing
+-- possible parses of all the data seen so far, with the possible parses of a new piece of data,
+-- represented by @ParseResult ts@ and produce a new set of possible parses for the entire column
+-- so far.
 addParsedCell :: (RMap ts, RApply ts) => ParseHowRec ts -> ColType ts -> ParseResult ts -> ColType ts
 addParsedCell _ (UnknownColType _) MissingData = UnknownColType SomeMissing
 addParsedCell _ (UnknownColType sm) (ParseResult pRec) = KnownColType (sm, pRec)
