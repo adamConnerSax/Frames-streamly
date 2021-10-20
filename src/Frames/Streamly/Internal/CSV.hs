@@ -36,10 +36,22 @@ module Frames.Streamly.Internal.CSV
   , includedColTypeNames
   , includedColTypeInfo
   , colStatesAndHeadersToParseColHandler
+  -- * Exceptions
+  , FramesCSVException(..)
   )
 where
 
 import Language.Haskell.TH.Syntax (Lift)
+
+-- | Unite the various exceptions which might arise during TH inference of
+-- column types or parsing of the file into a Frame.
+data FramesCSVException =
+  EmptyStreamException
+  | MissingHeadersException [HeaderText]
+  | BadHeaderException Text
+  | WrongNumberColumnsException Text deriving Show
+
+instance Exception FramesCSVException
 
 -- | Type to control how column type inference is handled,
 -- particularly in the presence of missing data

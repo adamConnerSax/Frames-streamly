@@ -36,6 +36,7 @@ library
       Frames.Streamly.Transform
       Frames.Streamly.TH
   other-modules: Frames.Streamly.Internal.CSV
+                 Frames.Streamly.Internal.Streaming
   autogen-modules:
      Paths_Frames_streamly
   hs-source-dirs:
