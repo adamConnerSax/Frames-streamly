@@ -785,85 +785,31 @@ useRowFilter = maybe id f  where
   f bs xs = snd <$> filter fst (zip bs xs)
 {-# INLINEABLE useRowFilter #-}
 
--- | Imitating the Pipes thing here.
-type StreamState t m a = StateT (t m a) m
+throwIfEmpty :: MonadThrow m => Streamly.SerialT m a -> m ()
+throwIfEmpty s = Streamly.null s >>= \b -> when b (throwM EmptyStreamException)
+{-# INLINE throwIfEmpty #-}
 
-rowFilterStreamState :: (Streamly.IsStream t, Monad m) => Maybe [Bool] -> StreamState t m [Text] ()
-rowFilterStreamState rf = modify (Streamly.map $ useRowFilter rf)
-{-# INLINEABLE rowFilterStreamState #-}
-
--- | pull one item from the head of the stream, if available,
--- return that and leave the remaining stream in the state.
-draw :: Monad m => StreamState Streamly.SerialT m a (Maybe a)
-draw = do
-  s <- get
-  ma <- lift $ Streamly.uncons s
-  case ma of
-    Nothing -> return Nothing
-    Just (a, s') -> put s' >> return (Just a)
---  modify $ Streamly.drop 1
---  return ma
-{-# INLINEABLE draw #-}
-
-peek :: Monad m => StreamState Streamly.SerialT m a (Maybe a)
-peek = do
-  s <- get
-  lift $ Streamly.head s
-{-# INLINEABLE peek #-}
-
-
-foldAll :: Monad m
-        => (x -> a -> x) -> x -> (x -> b) -> StreamState Streamly.SerialT m a b
-foldAll step start extract = do
-#if MIN_VERSION_streamly(0,8,0)
-  let fld = extract <$> Streamly.Fold.foldl' step start
-#else
-  let fld = Streamly.Fold.mkPure step start extract
-#endif
-  s <- get
-  lift $ Streamly.fold fld s
-{-# INLINEABLE foldAll #-}
-
-{-
-foldAllM :: Monad m
-        => (x -> a -> m x) -> m x -> (x -> m b) -> StreamState Streamly.SerialT m a b
-foldAllM step start extract = do
-#if MIN_VERSION_streamly(0,8,0)
-  let fld = Streamly.Fold.rmapM extract $ Streamly.Fold.foldlM' step start
-#else
-  let fld = Streamly.Fold.mkFold step start extract
-#endif
-  s <- get
-  lift $ Streamly.fold fld s
-{-# INLINEABLE foldAllM #-}
--}
-
--- | Infer column types from a prefix (up to 1000 lines) of a CSV
--- file.
-prefixInference :: forall a m.(MonadThrow m
+prefixInferenceS :: forall a m.(MonadThrow m
                    , Monad m
                    , FSCT.ColumnTypeable a
---                   , V.RMap ts
---                   , V.RApply ts
---                   , V.RFoldMap ts
---                   , V.RecApplicative ts
---                   , V.RPureConstrained FSCT.Parseable ts
                    )
                 => FSCT.Parsers a
                 -> (Text -> Bool)
                 -> Maybe [Bool]
-                -> StreamState Streamly.SerialT m [T.Text] [a] --FSCU.ColType ts]
-prefixInference parsers isMissing rF = do
+                -> Streamly.SerialT m [T.Text]
+                -> m [a]
+prefixInferenceS parsers isMissing rF s = do
+  throwIfEmpty s
   let inferCols = fmap (FSCT.inferType @a parsers isMissing) -- need type application here to know what col-type to infer
-  rowFilterStreamState rF
-
-  peek >>= \case
-    Nothing -> lift $ throwM $ EmptyStreamException
-    Just _ -> foldAll
-                 (\ts -> zipWith (FSCT.updateWithParse parsers) ts . inferCols)
-                 (repeat FSCT.initialColType)
-                 id
-{-# INLINEABLE prefixInference #-}
+      step ts = zipWith (FSCT.updateWithParse parsers) ts . inferCols
+      start = repeat FSCT.initialColType
+#if MIN_VERSION_streamly(0,8,0)
+  let fld = Streamly.Fold.foldl' step start
+#else
+  let fld = Streamly.Fold.mkPure step start id
+#endif
+  Streamly.fold fld $ Streamly.map (useRowFilter rF) s
+{-# INLINEABLE prefixInferenceS #-}
 
 data ColTypeInfo a = ColTypeInfo { colTypeName :: ICSV.ColTypeName, orMissingWhen :: ICSV.OrMissingWhen, colBaseType :: a}
 
@@ -873,56 +819,53 @@ readColHeaders :: forall a b m.
                   , Monad m
                   , MonadThrow m
                   , FSCT.ColumnTypeable a
-{-                  , V.RMap ts
-                  , V.RApply ts
-                  , V.RFoldMap ts
-                  , V.RecApplicative ts
-                  , V.RPureConstrained FSCT.Parseable ts
--}
                   )
                => FSCT.Parsers a
                -> ICSV.RowGenColumnSelector b-- headerOverride
                -> Streamly.SerialT m [Text]
                -> m ([ColTypeInfo a], ICSV.ParseColumnSelector)
-readColHeaders parsers rgColHandler = evalStateT $ do
+readColHeaders parsers rgColHandler s =  do
   let csToBool =  (/= ICSV.Exclude)
-  (headerRow :: [(ICSV.ColTypeName , ICSV.OrMissingWhen)], pch :: ICSV.ParseColumnSelector, rF :: Maybe [Bool]) <- case rgColHandler of
+  -- headerRow :: [(ICSV.ColTypeName , ICSV.OrMissingWhen)]
+  -- pch :: ICSV.ParseColumnSelector
+  -- rF :: Maybe [Bool]
+  mUncons <- Streamly.uncons @Streamly.SerialT s
+  (firstRow, mTail) <- maybe (throwM EmptyStreamException) return mUncons
+  (headerRow, pch, rF, inferS) <- case rgColHandler of
     ICSV.GenUsingHeader f mrF -> do
-      allHeaders <- ICSV.HeaderText <<$>> (draw >>= maybe err return)
-      lift $ checkColumnIds mrF allHeaders
+      let allHeaders = ICSV.HeaderText <$> firstRow -- (draw >>= maybe err return)
+      checkColumnIds mrF allHeaders
       let allColStates = f <$> allHeaders
           allBools = csToBool <$> allColStates
           includedInfo = ICSV.includedColTypeInfo allColStates
           parseColHeader = ICSV.colStatesAndHeadersToParseColHandler allColStates allHeaders
-      return (includedInfo, parseColHeader, Just allBools)
+      return (includedInfo, parseColHeader, Just allBools, mTail)
     ICSV.GenIgnoringHeader f mrF -> do
-      allHeaders <- draw >>= maybe err return
-      let allIndexes = [0..(length allHeaders - 1)]
-      lift $ checkColumnIds mrF allIndexes
+      let allHeaders = firstRow -- <- draw >>= maybe err return
+          allIndexes = [0..(length allHeaders - 1)]
+      checkColumnIds mrF allIndexes
       let allColStates = f  <$> allIndexes
           allBools = csToBool <$> allColStates
           includedInfo = ICSV.includedColTypeInfo allColStates
           parseColHeader = ICSV.ParseIgnoringHeader allColStates
-      return (includedInfo, parseColHeader, Just allBools)
+      return (includedInfo, parseColHeader, Just allBools, mTail)
     ICSV.GenWithoutHeader f mrF -> do
-      sampleRow <- peek >>= maybe err return
-      let allIndexes = [0..(length sampleRow - 1)]
-      lift $ checkColumnIds mrF allIndexes
+      let sampleRow = firstRow -- <- peek >>= maybe err return
+          allIndexes = [0..(length sampleRow - 1)]
+      checkColumnIds mrF allIndexes
       let allColStates =  f <$> allIndexes
           allBools = csToBool <$> allColStates
           includedInfo = ICSV.includedColTypeInfo allColStates
           parseColHeader = ICSV.ParseWithoutHeader allColStates
-      return (includedInfo, parseColHeader, Just allBools)
+      return (includedInfo, parseColHeader, Just allBools, s)
   let isMissing t = T.null t || t == "NA"
       assembleCTI :: (ICSV.ColTypeName, ICSV.OrMissingWhen) -> a -> ColTypeInfo a
       assembleCTI (a, b) c = ColTypeInfo a b c
-  colTypes <- prefixInference parsers isMissing rF
+  colTypes <- prefixInferenceS parsers isMissing rF inferS
   unless (length headerRow == length colTypes) $ errNumColumns headerRow colTypes
   return (zipWith assembleCTI headerRow colTypes, pch)
-  where err :: StreamState Streamly.SerialT m [Text] [Text]  = lift $ throwM EmptyStreamException
-        errNumColumns hs cts =
-          lift
-          $ throwM
+  where errNumColumns hs cts =
+          throwM
           $ BadHeaderException
           $ (unlines
           [ ""

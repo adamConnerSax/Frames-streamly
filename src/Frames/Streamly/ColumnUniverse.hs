@@ -33,9 +33,6 @@ import Data.Vinyl.Functor
 import Frames.Streamly.ColumnTypeable
 import Frames.Streamly.Categorical
 import Language.Haskell.TH
-import Frames.Streamly.TH (RowGen(columnPa))
-import GHC.ForeignPtr (Finalizers(HaskellFinalizers))
-import Data.Primitive (Prim(sizeOf#))
 
 -- | Use a @ParseHow@ to (possibly) parse a given @Text@ as a value of type @a@
 inferParseable :: ParseHow a -> T.Text -> (Maybe :. Parsed) a
