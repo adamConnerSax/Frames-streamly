@@ -1,5 +1,6 @@
 {-# LANGUAGE AllowAmbiguousTypes, BangPatterns,
-             DefaultSignatures, FlexibleInstances,
+             DefaultSignatures, DeriveFunctor,
+             FlexibleInstances,
              LambdaCase,
              MultiParamTypeClasses, RankNTypes, ScopedTypeVariables
              , TemplateHaskell, TypeFamilies #-}
@@ -8,32 +9,26 @@ module Frames.Streamly.ColumnTypeable where
 import Prelude hiding (Const(..), Type)
 import Frames.Streamly.OrMissing
 
---import Control.Monad (MonadPlus)
---import Data.Maybe (fromMaybe)
 import Data.Readable (Readable(fromText))
-import Data.Typeable (typeRep) -- (Proxy(..), typeRep, Typeable)
+import Data.Typeable (typeRep)
 import qualified Data.Text as T
---import Data.Int (Int32, Int64)
 import Data.Vinyl.Functor (Const(..))
 import Language.Haskell.TH
 
-data Parsed a = Possibly a | Definitely a deriving (Eq, Ord, Show)
-
-parsedValue :: Parsed a -> a
-parsedValue (Possibly a) = a
-parsedValue (Definitely a) = a
-
-instance Functor Parsed where
-  fmap f (Possibly x) = Possibly (f x)
-  fmap f (Definitely x) = Definitely (f x)
+-- | Type to represent the result of successfully parsing a @Text@ to @a@.
+-- Usually will be @Definitely@ but @Possibly@ may be used if further
+-- parsing to type @a@ may show that @a@ was not possible type for the
+-- entire column.  Used for the @Categorical@ type.
+data Parsed a = Possibly a | Definitely a deriving (Eq, Ord, Show, Functor)
 
 -- | Values that can be read from a 'T.Text' with more or less
 -- discrimination.
 class Parseable a where
-  -- | Returns 'Nothing' if a value of the given type can not be read;
+  -- | E.g., if @m@ is 'Maybe',
+  -- Returns 'Nothing' if a value of the given type can not be read;
   -- returns 'Just Possibly' if a value can be read, but is likely
   -- ambiguous (e.g. an empty string); returns 'Just Definitely' if a
-  -- value can be read and is unlikely to be ambiguous."
+  -- value can be read and is unlikely to be ambiguous.
   parse :: MonadPlus m => T.Text -> m (Parsed a)
   default parse :: (Readable a, MonadPlus m)
                 => T.Text -> m (Parsed a)
@@ -48,6 +43,7 @@ class Parseable a where
   parseCombine :: MonadPlus m => Parsed a -> Parsed a -> m (Parsed a)
   default parseCombine :: MonadPlus m => Parsed a -> Parsed a -> m (Parsed a)
   parseCombine = const . return
+  {-# INLINE parseCombine #-}
 
   representableAsType :: Parsed a -> Const (Either (String -> Q [Dec]) Type) a
   default
@@ -55,38 +51,51 @@ class Parseable a where
                         => Parsed a -> Const (Either (String -> Q [Dec]) Type) a
   representableAsType =
     const (Const (Right (ConT (mkName (show (typeRep (Proxy :: Proxy a)))))))
+  {-# INLINABLE representableAsType #-}
 
 
 -- | Discard any estimate of a parse's ambiguity.
 discardConfidence :: Parsed a -> a
 discardConfidence (Possibly x) = x
 discardConfidence (Definitely x) = x
+{-# INLINE discardConfidence #-}
 
 -- | Acts just like 'fromText': tries to parse a value from a 'T.Text'
 -- and discards any estimate of the parse's ambiguity.
 parse' :: (MonadPlus m, Parseable a) => T.Text -> m a
 parse' = fmap discardConfidence . parse
+{-# INLINE parse' #-}
 
 parseIntish :: (Readable a, MonadPlus f) => T.Text -> f (Parsed a)
 parseIntish t =
   Definitely <$> fromText (fromMaybe t (T.stripSuffix (T.pack ".0") t))
+{-# INLINEABLE parseIntish #-}
 
 instance Parseable Bool where
 
 instance Parseable Int where
   parse = parseIntish
+  {-# INLINE parse #-}
+
 instance Parseable Int32 where
   parse = parseIntish
+  {-# INLINE parse #-}
+
 instance Parseable Int64 where
   parse = parseIntish
+  {-# INLINE parse #-}
+
 instance Parseable Integer where
   parse = parseIntish
+  {-# INLINE parse #-}
 
 instance Parseable Float where
 instance Parseable Double where
   -- Some CSV's export Doubles in a format like '1,000.00', filtering
   -- out commas lets us parse those sucessfully
   parse = fmap Definitely . fromText . T.filter (/= ',')
+  {-# INLINE parse #-}
+
 instance Parseable T.Text where
 
 -- @adamConnerSax new/changed stuff
@@ -94,16 +103,34 @@ instance Parseable T.Text where
 -- | This class relates a universe of possible column types to Haskell
 -- types, and provides a mechanism to infer which type best represents
 -- some textual data.
+-- The type @a@ must somehow represent the list of all possible inferred types and
+-- which of those are currently possible given the data seen so far.
 class ColumnTypeable a where
   type ParseType a
+  -- ^ An associated type to represent the result of parsing a single @Text@ into possible column types
+  -- represented by @a@
   type Parsers a
+  -- ^ An associated type to represent information required to parse @Text@ to
+  -- possible types all held in @a@, combine the current slate of possible types and
+  -- a newly parsed set of possibilities and produce template haskell to declare the
+  -- "best" (most specific) type in @a@.
   colType :: Parsers a -> a -> Either (String -> Q [Dec]) Type
+  -- ^ TH haskell representing the best type among those possible in @a@.
+  -- Used when declaring the type after inference.
   inferType :: Parsers a -> (T.Text -> Bool) -> T.Text -> ParseType a
+  -- ^ Given parsing info and a function to indicate "missing" data, parse a @Text@ to possible types @a@
   initialColType :: a
+  -- ^ A value of type @a@ to be used as the initial state in iterative column type inference.
+  -- Usually indicates all types are still possible.
   updateWithParse :: Parsers a -> a -> ParseType a -> a
+  -- ^ given parsing info, an @a@ representing possible column types given the data so far,
+  -- and a parsed value, indicating possible types of the current item of data, update the
+  -- possible types for the column.
+
 
 instance (Typeable a, Parseable a) => Parseable (OrMissing a) where
   parse t = return $ maybe (Definitely Missing) (fmap Present) $ parse t
+  {-# INLINEABLE parse #-}
   parseCombine p1 p2 = case (commute p1, commute p2) of
     (Missing, Missing) -> return $ Definitely Missing
     (Present x, Missing) -> return $ fmap Present x
@@ -115,6 +142,7 @@ instance (Typeable a, Parseable a) => Parseable (OrMissing a) where
       commute (Possibly (Present a)) = Present (Possibly a)
       commute (Definitely Missing) = Missing
       commute (Definitely (Present a)) = Present (Definitely a)
+  {-# INLINEABLE parseCombine #-}
 
 -- | Record -of-functions for column parsing.
 data ParseHow a = ParseHow

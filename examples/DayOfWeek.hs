@@ -9,11 +9,8 @@
 module DayOfWeek where
 
 import qualified Frames.Streamly.ColumnTypeable as FStreamly
-import Frames.Streamly.OrMissing
+import Frames.Streamly.OrMissing -- for derivingOrMissingUnboxVectorFor' and required in scope imports
 import qualified Data.Readable as Readable
-import Frames (Readable(fromText))
---import qualified Frames as Readble
-
 
 data DayOfWeek = Monday | Tuesday | Wednesday | Thursday | Friday | Saturday | Sunday deriving (Show, Eq, Enum, Bounded)
 

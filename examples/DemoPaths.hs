@@ -20,8 +20,6 @@ import qualified Frames.Streamly.ColumnTypeable as FStreamly
 import Frames.Streamly.OrMissing
 import qualified Data.Set as Set
 import Data.Vinyl as V
-import qualified Text.Read as Read
-
 
 forestFiresPath :: FilePath
 forestFiresPath = "forestfires.csv"
@@ -54,7 +52,6 @@ ffColSubsetRowGenCat = FStreamly.modifyColumnSelector modSelector rowGen
     rowTypeName = "FFColSubsetCat"
     rowGen = (FStreamly.rowGenCat (thPath forestFiresPath)) { FStreamly.rowTypeName = rowTypeName, FStreamly.tablePrefix = "Cat" }
     modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
-
 
 ffInferOrMissingRG :: FStreamly.RowGen 'FStreamly.ColumnByName FStreamly.CommonColumns
 ffInferOrMissingRG = setOrMissingWhen $ FStreamly.modifyColumnSelector modSelector rowGen

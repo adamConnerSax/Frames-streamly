@@ -45,17 +45,18 @@ inferParseable ParseHow{..} = Compose . phParse
 
 -- | Helper to call 'inferParseablePH' on a 'Rec'.
 inferParseable' :: ParseHow a -> (((->) T.Text) :. (Maybe :. Parsed)) a
-inferParseable' ph = Compose $ inferParseable ph
+inferParseable'  = Compose . inferParseable
 {-# INLINE inferParseable' #-}
 
 -- * Record Helpers
 
 type ParseHowRec ts = Rec ParseHow ts
-
+-- | Generate a Rec of @ParseHow@ for a list of types with 'Parseable' instances.
 parseableParseHowRec :: RPureConstrained Parseable ts => ParseHowRec ts
 parseableParseHowRec = rpureConstrained @Parseable parseableParseHow
 {-# INLINEABLE parseableParseHowRec #-}
 
+-- | try to parse each type in a type-list,, putting the result in a Rec.
 tryParseAll :: forall ts. (RMap ts)
             => ParseHowRec ts -> T.Text -> Rec (Maybe :. Parsed) ts
 tryParseAll phR = rtraverse getCompose funs

@@ -131,9 +131,9 @@ instance KnownNat n => Parseable (Categorical n) where
     | S.size catCombined <= maxVariants =
       return (Possibly (Categorical catCombined))
     | otherwise = mzero
-    where getCats = categories . parsedValue
+    where getCats = categories . discardConfidence
           catCombined = S.union (getCats p1) (getCats p2)
           maxVariants :: Int
           maxVariants = fromIntegral (toInteger (natVal' (proxy# :: Proxy# n)))
-  representableAsType (S.toList . categories . parsedValue -> cats) =
+  representableAsType (S.toList . categories . discardConfidence -> cats) =
     Const (Left (\n -> declareCategorical n (Just n) (map T.unpack cats)))
