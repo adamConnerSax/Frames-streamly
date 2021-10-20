@@ -105,7 +105,6 @@ module Frames.Streamly.CSV
 where
 
 import qualified Frames.Streamly.Internal.CSV as ICSV
-import qualified Frames.Streamly.ColumnUniverse as FSCU
 import qualified Frames.Streamly.ColumnTypeable as FSCT
 
 import Prelude hiding(getCompose)
@@ -793,12 +792,17 @@ rowFilterStreamState :: (Streamly.IsStream t, Monad m) => Maybe [Bool] -> Stream
 rowFilterStreamState rf = modify (Streamly.map $ useRowFilter rf)
 {-# INLINEABLE rowFilterStreamState #-}
 
+-- | pull one item from the head of the stream, if available,
+-- return that and leave the remaining stream in the state.
 draw :: Monad m => StreamState Streamly.SerialT m a (Maybe a)
 draw = do
   s <- get
-  ma <- lift $ Streamly.head s
-  modify $ Streamly.drop 1
-  return ma
+  ma <- lift $ Streamly.uncons s
+  case ma of
+    Nothing -> return Nothing
+    Just (a, s') -> put s' >> return (Just a)
+--  modify $ Streamly.drop 1
+--  return ma
 {-# INLINEABLE draw #-}
 
 peek :: Monad m => StreamState Streamly.SerialT m a (Maybe a)
