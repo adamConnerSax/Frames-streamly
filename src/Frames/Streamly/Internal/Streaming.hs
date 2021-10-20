@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveLift #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE RankNTypes #-}
 module Frames.Streamly.Internal.Streaming where
@@ -27,16 +28,32 @@ import qualified Streamly.Internal.Data.Fold as Streamly.Fold
 
 data StreamFunctions s m = StreamFunctions
   { sThrowIfEmpty :: forall x. s m x -> m ()
+    -- ^ throw an exception if the stream is empty
   , sMapper :: forall x y. (x -> y) -> s m x -> s m y
+  -- ^ map each element of the stream using the given function
   , sFolder :: forall x b. (x -> b -> x) -> x -> s m b -> m x
+  -- ^ fold the stream using the given step function and starting value
   , sUncons :: forall a . s m a -> m (Maybe (a, s m a))
+  -- ^ split a stream into it's head and tail, returning @m Nothing@ if the stream was empty
   , sTextLines :: FilePath -> s m Text
+  -- ^ create a stream of lines of text by reading the given file
   , sLineReader :: (Text -> [Text]) -> s m [Text]
---  , sParsed :: (V.RMap rs, MonadCatch m) => ([Text] -> s) -> s m
+  -- ^ given a function to split a line of 'Text' into @[Text]@ items, produce a stream of @[Text]@.
+  -- This function needs to be bound to a source (a file or some such).
+  , sDrop :: forall a.Int -> s m a -> s m a
+  -- ^ drop n items from the head of the stream
+--  , sParsed :: forall a. ([Text] -> a) -> s m a
+  , sFromEffect :: forall a.m a -> s m a
+    -- ^ lift a monadic action returning a into a stream
   }
 
---sParsed :: StreamFunctions s m -> (Text -> V.Rec f rs) -> FilePath -> StreamFunctions s m (V.Rec f rs)
+{-
+import qualified Pipes
+import Pipes.Lift (lift)
 
+pipesFromEffect :: m a -> Producer a m ()
+pipesFromEffect ma = lift ma >>= Pipes.yield
+-}
 
 streamlyFunctions :: (Streamly.MonadAsync m, MonadCatch m) => FilePath -> StreamFunctions Streamly.SerialT m
 streamlyFunctions fp = StreamFunctions
@@ -46,6 +63,16 @@ streamlyFunctions fp = StreamFunctions
   Streamly.uncons
   streamTextLines
   (\f -> Streamly.map f $ streamTextLines fp)
+  Streamly.drop
+  fromEffect
+
+fromEffect :: (Monad m, IsStream t) => m a -> t m a
+#if MIN_VERSION_streamly(0,8,0)
+fromEffect = Streamly.fromEffect
+#else
+fromEffect = Streamly.yieldM
+#endif
+{-# INLINE fromEffect #-}
 {-# INLINEABLE streamlyFunctions #-}
 
 streamlyThrowIfEmpty :: MonadThrow m => Streamly.SerialT m a -> m ()
