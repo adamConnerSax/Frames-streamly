@@ -37,6 +37,7 @@ library
       Frames.Streamly.TH
   other-modules: Frames.Streamly.Internal.CSV
                  Frames.Streamly.Internal.Streaming
+                 Frames.Streamly.Internal.Pipes
   autogen-modules:
      Paths_Frames_streamly
   hs-source-dirs:
@@ -50,6 +51,7 @@ library
     , deepseq >= 1.4 && <1.5
     , exceptions >=0.10.0 && <0.11
     , ghc-prim >= 0.6 && < 0.8
+    , pipes >= 4.3.14 && <4.4
     , primitive >=0.7 && <0.8
     , readable >= 0.3 && <0.4
     , relude >=1.0.0 && < 1.1
