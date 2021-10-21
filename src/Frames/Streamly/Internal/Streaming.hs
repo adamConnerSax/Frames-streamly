@@ -7,7 +7,6 @@ module Frames.Streamly.Internal.Streaming where
 import Frames.Streamly.Internal.CSV (FramesCSVException(..))
 import           Control.Monad.Catch                     ( MonadThrow(..), MonadCatch)
 import qualified Data.Text as T
-import qualified Data.Vinyl as V
 import qualified Streamly.Prelude                       as Streamly
 import qualified Streamly.Data.Fold                     as Streamly.Fold
 import qualified Streamly.Internal.FileSystem.File      as Streamly.File
@@ -29,22 +28,33 @@ import qualified Streamly.Internal.Data.Fold as Streamly.Fold
 data StreamFunctions s m = StreamFunctions
   { sThrowIfEmpty :: forall x. s m x -> m ()
     -- ^ throw an exception if the stream is empty
-  , sMapper :: forall x y. (x -> y) -> s m x -> s m y
-  -- ^ map each element of the stream using the given function
-  , sFolder :: forall x b. (x -> b -> x) -> x -> s m b -> m x
-  -- ^ fold the stream using the given step function and starting value
+  , sCons :: forall a. a -> s m a -> s m a
+  -- ^ add an element to the head of a stream
   , sUncons :: forall a . s m a -> m (Maybe (a, s m a))
-  -- ^ split a stream into it's head and tail, returning @m Nothing@ if the stream was empty
-  , sTextLines :: FilePath -> s m Text
-  -- ^ create a stream of lines of text by reading the given file
-  , sLineReader :: (Text -> [Text]) -> s m [Text]
-  -- ^ given a function to split a line of 'Text' into @[Text]@ items, produce a stream of @[Text]@.
-  -- This function needs to be bound to a source (a file or some such).
+    -- ^ split a stream into it's head and tail, returning @m Nothing@ if the stream was empty
+  , sMap :: forall x y. (x -> y) -> s m x -> s m y
+    -- ^ map each element of the stream using the given function
+  , sMapMaybe :: forall x y. (x -> Maybe y) -> s m x -> s m y
+    -- ^ map each element of the stream using the given function
   , sDrop :: forall a.Int -> s m a -> s m a
-  -- ^ drop n items from the head of the stream
---  , sParsed :: forall a. ([Text] -> a) -> s m a
+    -- ^ drop n items from the head of the stream
   , sFromEffect :: forall a.m a -> s m a
     -- ^ lift a monadic action returning a into a stream
+  , sFolder :: forall x b. (x -> b -> x) -> x -> s m b -> m x
+    -- ^ fold the stream using the given step function and starting value
+  , sToList :: forall x. s m x -> m [x]
+  -- ^ stream to (lazy) list
+  , sFromFoldable :: forall f a.Foldable f => f a -> s m a
+    -- ^ build a stream of @a@ from a foldable of @a@
+  , sUnfoldList :: forall a.s m [a] -> s m a
+  -- ^ unfold a stream of lists of a into one stream of a
+  , sTextLines :: FilePath -> s m Text
+    -- ^ create a stream of lines of text by reading the given file
+  , sLineReader :: (Text -> [Text]) -> s m [Text]
+    -- ^ given a function to split a line of 'Text' into @[Text]@ items, produce a stream of @[Text]@.
+    -- This function needs to be bound to a source (a file or some such).
+  , sEncodeUtf8 :: s m Char -> s m Word 8
+    -- ^ streamly version handles invalid characters
   }
 
 {-
@@ -53,18 +63,35 @@ import Pipes.Lift (lift)
 
 pipesFromEffect :: m a -> Producer a m ()
 pipesFromEffect ma = lift ma >>= Pipes.yield
+
+pipesFromFoldable :: (Functor m, Foldable f) => f a -> Pipes.Producer a m ()
+pipesFromFoldable fa = Pipes.each
+
+pipesUnfoldList ::  Producer [a] m x -> Producer a m x
+pipesUnfoldList = ??
+
+pipesEncodeUtf8 :: Producer Char m x -> Producer Word8 m x
+pipesEncodeUtf8 = ??
 -}
+
+
 
 streamlyFunctions :: (Streamly.MonadAsync m, MonadCatch m) => FilePath -> StreamFunctions Streamly.SerialT m
 streamlyFunctions fp = StreamFunctions
   streamlyThrowIfEmpty
-  Streamly.map
-  streamlyFolder
+  Streamly.cons
   Streamly.uncons
-  streamTextLines
-  (\f -> Streamly.map f $ streamTextLines fp)
+  Streamly.map
+  Streamly.mapMaybe
   Streamly.drop
   fromEffect
+  streamlyFolder
+  Streamly.toList
+  Streamly.fromFoldable
+  streamlyUnfoldList
+  streamTextLines
+  (\f -> Streamly.map f $ streamTextLines fp)
+  Streamly.Unicode.encodeUtf8
 
 fromEffect :: (Monad m, IsStream t) => m a -> t m a
 #if MIN_VERSION_streamly(0,8,0)
@@ -74,6 +101,14 @@ fromEffect = Streamly.yieldM
 #endif
 {-# INLINE fromEffect #-}
 {-# INLINEABLE streamlyFunctions #-}
+
+streamlyUnfoldList :: (IsStream t, Monad m) => t m [a] -> t m a
+#if MIN_VERSION_streamly(0,8,0)
+streamlyUnfoldList = Streamly.unfoldMany Streamly.Unfold.fromList
+#else
+streamlyUnfoldList = Streamly.concatUnfold Streamly.Unfold.fromList
+#endif
+{-# INLINE streamlyUnfoldList #-}
 
 streamlyThrowIfEmpty :: MonadThrow m => Streamly.SerialT m a -> m ()
 streamlyThrowIfEmpty s = Streamly.null s >>= flip when (throwM EmptyStreamException)

@@ -83,15 +83,15 @@ module Frames.Streamly.CSV
     , formatWithShowCSV
     , writeLines
     , writeLines'
-    , word8ToTextLines
+--    , word8ToTextLines
     -- * TH Support
     , streamTokenized'
     , streamTokenized
     , ColTypeInfo(..)
     , readColHeaders
     -- * debugging
-    , streamWord8
-    , streamTextLines
+--    , streamWord8
+--    , streamTextLines
     , streamParsed
     , streamParsedMaybe
       -- * Re-exports
@@ -457,33 +457,31 @@ writeCSV_Show fp = writeSV_Show "," fp
 -- Results composed with the @Maybe@ functor. Unparsed fields are returned as @Nothing@.
 -- NB:  If the inferred/given rs is different from the actual file row-type, things will go awry.
 readTableMaybe
-    :: forall rs t m.
-    (Streamly.MonadAsync m
-    , MonadCatch m
-    , IsStream t
-    , Monad (t m)
-    , Vinyl.RMap rs
-    , StrictReadRec rs)
-    => FilePath -- ^ file path
-    -> t m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Maybe :. ElField@ records after parsing.
-readTableMaybe = readTableMaybeOpt defaultParser
+    :: forall rs s m.
+    ( Vinyl.RMap rs
+    , StrictReadRec rs
+    , MonadThrow m
+    , Monad (s m))
+    => StreamFunctions s m
+    -> FilePath -- ^ file path
+    -> s m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Maybe :. ElField@ records after parsing.
+readTableMaybe sf = readTableMaybeOpt sf defaultParser
 {-# INLINEABLE readTableMaybe #-}
 
 -- | Stream a table from a file path.
 -- Results composed with the @Maybe@ functor. Unparsed fields are returned as @Nothing@.
 -- NB:  If the inferred/given rs is different from the actual file row-type, things will go awry.
 readTableMaybeOpt
-    :: forall rs t m.
-    (Streamly.MonadAsync m
-    , MonadCatch m
-    , IsStream t
-    , Monad (t m)
-    , Vinyl.RMap rs
-    , StrictReadRec rs)
-    => ParserOptions -- ^ parsing options
+    :: forall rs s m.
+    ( Vinyl.RMap rs
+    , StrictReadRec rs
+    , MonadThrow m
+    , Monad (s m))
+    => StreamFunctions s m
+    -> ParserOptions -- ^ parsing options
     -> FilePath -- ^ file path
-    -> t m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Maybe :. ElField@ records after parsing.
-readTableMaybeOpt opts = Streamly.map recEitherToMaybe . readTableEitherOpt opts
+    -> s m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Maybe :. ElField@ records after parsing.
+readTableMaybeOpt sf@StreamFunctions{..} opts = sMap recEitherToMaybe . readTableEitherOpt sf opts
 {-# INLINEABLE readTableMaybeOpt #-}
 
 -- | Stream a table from a file path.
@@ -492,16 +490,15 @@ readTableMaybeOpt opts = Streamly.map recEitherToMaybe . readTableEitherOpt opts
 -- Uses default options.
 -- NB:  If the inferred/given rs is different from the actual file row-type, things will go awry.
 readTableEither
-  :: forall rs t m.
-     (Streamly.MonadAsync m
-     , MonadCatch m
-     , IsStream t
-     , Monad (t m)
-     , Vinyl.RMap rs
-     , StrictReadRec rs)
-  => FilePath -- ^ file path
-  -> t m (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Either :. ElField@ records after parsing.
-readTableEither = readTableEitherOpt defaultParser
+  :: forall rs s m.
+     ( Vinyl.RMap rs
+     , StrictReadRec rs
+     , MonadThrow m
+     , Monad (s m))
+  => StreamFunctions s m
+  -> FilePath -- ^ file path
+  -> s m (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Either :. ElField@ records after parsing.
+readTableEither sf = readTableEitherOpt sf defaultParser
 {-# INLINEABLE readTableEither #-}
 
 -- | Stream a table from a file path.
@@ -509,49 +506,46 @@ readTableEither = readTableEitherOpt defaultParser
 -- containing the string that failed to parse.
 -- NB:  If the inferred/given rs is different from the actual file row-type, things will go awry.
 readTableEitherOpt
-  :: forall rs t m.
-     (Streamly.MonadAsync m
-     , MonadCatch m
-     , IsStream t
-     , Monad (t m)
-     , Vinyl.RMap rs
-     , StrictReadRec rs)
-  => ParserOptions -- ^ parsing options
+  :: forall rs s m.
+     ( Vinyl.RMap rs
+     , StrictReadRec rs
+     , MonadThrow m
+     , Monad (s m))
+  => StreamFunctions s m
+  -> ParserOptions -- ^ parsing options
   -> FilePath -- ^ file path
-  -> t m (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Either :. ElField@ records after parsing.
-readTableEitherOpt opts = streamTableEitherOpt opts . word8ToTextLines . Streamly.File.toBytes
+  -> s m (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Either :. ElField@ records after parsing.
+readTableEitherOpt sf@StreamFunctions{..} opts = streamTableEitherOpt sf opts . sTextLines
 {-# INLINEABLE readTableEitherOpt #-}
 
 -- | Stream Table from a file path, dropping rows where any field fails to parse
 -- | Use default options
 -- NB:  If the inferred/given @rs@ is different from the actual file row-type, things will go awry.
 readTable
-  :: forall rs t m.
-     (Streamly.MonadAsync m
-     , MonadCatch m
-     , IsStream t
-     , Monad (t m)
-     , Vinyl.RMap rs
-     , StrictReadRec rs)
-  => FilePath -- ^ file path
-  -> t m (Frames.Record rs) -- ^ stream of Records
-readTable = readTableOpt defaultParser
+  :: forall rs s m.
+     ( Vinyl.RMap rs
+     , StrictReadRec rs
+     , MonadThrow m
+     , Monad (s m))
+  => StreamFunctions s m
+  -> FilePath -- ^ file path
+  -> s m (Frames.Record rs) -- ^ stream of Records
+readTable sf = readTableOpt sf defaultParser
 {-# INLINEABLE readTable #-}
 
 -- | Stream Table from a file path, dropping rows where any field fails to parse
 -- NB:  If the inferred/given @rs@ is different from the actual file row-type, things will go awry.
 readTableOpt
-  :: forall rs t m.
-     (Streamly.MonadAsync m
-     , MonadCatch m
-     , IsStream t
-     , Monad (t m)
-     , Vinyl.RMap rs
-     , StrictReadRec rs)
-  => ParserOptions  -- ^ parsing options
+  :: forall rs s m.
+     ( Vinyl.RMap rs
+     , StrictReadRec rs
+     , MonadThrow m
+     , Monad (s m))
+  => StreamFunctions s m
+  -> ParserOptions  -- ^ parsing options
   -> FilePath -- ^ file path
-  -> t m (Frames.Record rs)  -- ^ stream of Records
-readTableOpt !opts !fp = streamTableOpt opts $! word8ToTextLines $! Streamly.File.toBytes fp
+  -> s m (Frames.Record rs)  -- ^ stream of Records
+readTableOpt sf@StreamFunctions{..} !opts !fp = streamTableOpt sf opts $! sTextLines fp
 {-# INLINEABLE readTableOpt #-}
 
 -- | Convert a stream of lines of `Text` to a table
@@ -560,15 +554,15 @@ readTableOpt !opts !fp = streamTableOpt opts $! word8ToTextLines $! Streamly.Fil
 --
 -- NB:  If the inferred/given @rs@ is different from the actual file row-type, things will go awry.
 streamTableEither
-    :: forall rs t m.
-    (Streamly.MonadAsync m
-    , IsStream t
-    , Monad (t m)
-    , Vinyl.RMap rs
-    , StrictReadRec rs)
-    => Streamly.SerialT m T.Text -- ^ stream of 'Text' rows
-    -> t m (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of parsed @Either :. ElField@ rows
-streamTableEither = streamTableEitherOpt defaultParser
+    :: forall rs s m.
+    ( Vinyl.RMap rs
+    , StrictReadRec rs
+    , MonadThrow m
+    , Monad (s m))
+    => StreamFunctions s m
+    -> s m T.Text -- ^ stream of 'Text' rows
+    -> s m (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of parsed @Either :. ElField@ rows
+streamTableEither sf = streamTableEitherOpt sf defaultParser
 {-# INLINEABLE streamTableEither #-}
 
 
@@ -578,8 +572,8 @@ streamTableEither = streamTableEitherOpt defaultParser
 -- and do whatever is required, checking for various errors
 -- (empty stream, missing headers, wrong number of columns when using positions for typing/naming)
 -- along the way.
-handleHeader :: forall s m.
-                StreamFunctions s m
+handleHeader :: forall s m. (MonadThrow m)
+             => StreamFunctions s m
              -> ParserOptions
              -> s m T.Text
              -> m (Maybe [Bool], s m T.Text)
@@ -591,14 +585,14 @@ handleHeader StreamFunctions{..} opts s = case columnSelector opts of
   ICSV.ParseUsingHeader hs -> (, dropFirst s) . Just <$> boolsFromHeader hs s
   where
     dropFirst = sDrop 1
-    csToBool x = if x == ICSV.Exclude then False else True
+    csToBool x = x /= ICSV.Exclude
 
     tokenizedFirstRow :: s m T.Text -> m [Text]
     tokenizedFirstRow s' = do
       mht <- sUncons s'
       case mht of
         Nothing -> throwM ICSV.EmptyStreamException
-        Just (x, _) -> return . Frames.tokenizeRow (framesParserOptionsForTokenizing opts)
+        Just (x, _) -> return $ Frames.tokenizeRow (framesParserOptionsForTokenizing opts) x
 
     boolsFromHeader :: [ICSV.HeaderText] ->  s m T.Text -> m [Bool]
     boolsFromHeader hs s' = do
@@ -631,18 +625,18 @@ handleHeader StreamFunctions{..} opts s = case columnSelector opts of
 --
 -- NB:  If the inferred/given @rs@ is different from the actual file row-type, things will...go awry.
 streamTableEitherOpt
-    :: forall rs t m.
-    (Streamly.MonadAsync m
-    , IsStream t
-    , Monad (t m)
-    , Vinyl.RMap rs
-    , StrictReadRec rs)
-    => ParserOptions -- ^ parsing options
-    -> Streamly.SerialT m T.Text -- ^ stream of 'Text' rows
-    -> t m (Vinyl.Rec ((Either T.Text) Vinyl.:. Vinyl.ElField) rs)  -- ^ stream of parsed @Either :. ElField@ rows
-streamTableEitherOpt opts s = do
-  (rF, s') <- fromEffect $ handleHeader opts s
-  Streamly.map (recUnStrictEither . parse . useRowFilter rF . Frames.tokenizeRow (framesParserOptionsForTokenizing opts)) s'
+    :: forall rs s m.
+    ( Vinyl.RMap rs
+    , StrictReadRec rs
+    , MonadThrow m
+    , Monad (s m))
+    => StreamFunctions s m
+    -> ParserOptions -- ^ parsing options
+    -> s m T.Text -- ^ stream of 'Text' rows
+    -> s m (Vinyl.Rec ((Either T.Text) Vinyl.:. Vinyl.ElField) rs)  -- ^ stream of parsed @Either :. ElField@ rows
+streamTableEitherOpt sf@StreamFunctions{..} opts s = do
+  (rF, s') <- sFromEffect $ handleHeader sf opts s
+  sMap (recUnStrictEither . parse . useRowFilter rF . Frames.tokenizeRow (framesParserOptionsForTokenizing opts)) s'
   where
     parse = strictReadRec
 {-# INLINEABLE streamTableEitherOpt #-}
@@ -651,31 +645,31 @@ streamTableEitherOpt opts s = do
 --
 -- NB:  If the inferred/given @rs@ is different from the actual file row-type, things will..go awry.
 streamTableMaybe
-    :: forall rs t m.
-    (Streamly.MonadAsync m
-    , IsStream t
-    , Monad (t m)
-    , Vinyl.RMap rs
-    , StrictReadRec rs)
-    => Streamly.SerialT m T.Text -- ^ stream of 'Text' rows
-    -> t m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of parsed @Maybe :. ElField@ rows
-streamTableMaybe = streamTableMaybeOpt defaultParser
+    :: forall rs s m.
+    ( Vinyl.RMap rs
+    , StrictReadRec rs
+    , MonadThrow m
+    , Monad (s m))
+    => StreamFunctions s m
+    -> s m T.Text -- ^ stream of 'Text' rows
+    -> s m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of parsed @Maybe :. ElField@ rows
+streamTableMaybe sf = streamTableMaybeOpt sf defaultParser
 {-# INLINEABLE streamTableMaybe #-}
 
 -- | Convert a stream of lines of Text to a table .
 --
 -- NB:  If the inferred/given @rs@ is different from the actual file row-type, things will..go awry.
 streamTableMaybeOpt
-    :: forall rs t m.
-    (Streamly.MonadAsync m
-    , IsStream t
-    , Monad (t m)
-    , Vinyl.RMap rs
-    , StrictReadRec rs)
-    => ParserOptions -- ^ parsing options
-    -> Streamly.SerialT m T.Text -- ^ stream of 'Text' rows
-    -> t m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of parsed @Maybe :. ElField@ rows
-streamTableMaybeOpt opts = Streamly.map recEitherToMaybe . streamTableEitherOpt opts
+    :: forall rs s m.
+    (Vinyl.RMap rs
+    , StrictReadRec rs
+    , MonadThrow m
+    , Monad (s m))
+    => StreamFunctions s m
+    -> ParserOptions -- ^ parsing options
+    -> s m T.Text -- ^ stream of 'Text' rows
+    -> s m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of parsed @Maybe :. ElField@ rows
+streamTableMaybeOpt sf@StreamFunctions{..} opts = sMap recEitherToMaybe . streamTableEitherOpt sf opts
 {-# INLINEABLE streamTableMaybeOpt #-}
 
 -- | Convert a stream of lines of 'Text' to a table,
@@ -683,16 +677,16 @@ streamTableMaybeOpt opts = Streamly.map recEitherToMaybe . streamTableEitherOpt 
 -- Use default options.
 -- NB:  If the inferred/given @rs@ is different from the actual file row-type, things will go awry.
 streamTable
-    :: forall rs t m.
-    (Streamly.MonadAsync m
-    , IsStream t
-    , Monad (t m)
-    , Vinyl.RMap rs
+    :: forall rs s m.
+    ( Vinyl.RMap rs
     , StrictReadRec rs
+    , MonadThrow m
+    , Monad (s m)
     )
-    => Streamly.SerialT m T.Text -- ^ stream of 'Text' rows
-    -> t m (Frames.Record rs) -- ^ stream of Records
-streamTable = streamTableOpt defaultParser
+    => StreamFunctions s m
+    -> s m T.Text -- ^ stream of 'Text' rows
+    -> s m (Frames.Record rs) -- ^ stream of Records
+streamTable sf = streamTableOpt sf defaultParser
 {-# INLINEABLE streamTable #-}
 
 fromEffect :: (Monad m, IsStream t) => m a -> t m a
@@ -707,21 +701,21 @@ fromEffect = Streamly.yieldM
 -- dropping rows where any field fails to parse.
 -- NB:  If the inferred/given @rs@ is different from the actual file row-type, things will go awry.
 streamTableOpt
-    :: forall rs t m.
-    (Streamly.MonadAsync m
-    , IsStream t
-    , Monad (t m)
-    , Vinyl.RMap rs
+    :: forall rs s m.
+    ( Vinyl.RMap rs
     , StrictReadRec rs
+    , MonadThrow m
+    , Monad (s m)
     )
     => StreamFunctions s m
     -> ParserOptions -- ^ parsing options
     -> s m T.Text  -- ^ stream of 'Text' rows
     -> s m (Frames.Record rs) -- ^ stream of Records
-streamTableOpt StreamFunctions{..} opts s = do
-  (rF, s') <- fromEffect $ handleHeader opts s
-  Streamly.mapMaybe (mRec rF) s'
+streamTableOpt sf@StreamFunctions{..} opts s = do
+  (rF, s') <- sFromEffect $ handleHeader sf opts s
+  sMapMaybe (mRec rF) s'
   where
+    mRec :: Maybe [Bool] -> Text -> Maybe (Frames.Record rs)
     mRec rf x = Frames.recMaybe $! doParseStrict $! useRowFilter rf $! Frames.tokenizeRow (framesParserOptionsForTokenizing opts) x
 {-# INLINEABLE streamTableOpt #-}
 
@@ -796,7 +790,7 @@ prefixInference StreamFunctions{..} parsers isMissing rF s = do
       step ts = zipWith (FSCT.updateWithParse parsers) ts . inferCols
       start = repeat FSCT.initialColType
 
-  sFolder step start $ sMapper (useRowFilter rF) s
+  sFolder step start $ sMap (useRowFilter rF) s
 {-# INLINEABLE prefixInference #-}
 
 data ColTypeInfo a = ColTypeInfo { colTypeName :: ICSV.ColTypeName, orMissingWhen :: ICSV.OrMissingWhen, colBaseType :: a}
@@ -886,18 +880,18 @@ streamTextLines = word8ToTextLines2 . streamWord8
 -}
 
 streamTokenized' :: StreamFunctions s m -> FilePath -> Frames.Separator -> s m [Text]
-streamTokenized' StreamFunctions{..} fp sep =  sMapper (fmap T.copy . Frames.tokenizeRow popts) $ sTextLines fp where
+streamTokenized' StreamFunctions{..} fp sep =  sMap (fmap T.copy . Frames.tokenizeRow popts) $ sTextLines fp where
   popts = Frames.defaultParser { Frames.columnSeparator = sep }
 {-# INLINE streamTokenized' #-}
 
 streamTokenized :: StreamFunctions s m -> FilePath -> s m [Text]
-streamTokenized StreamFunctions{..} =  sMapper (fmap T.copy . Frames.tokenizeRow Frames.defaultParser) . sTextLines
+streamTokenized StreamFunctions{..} =  sMap (fmap T.copy . Frames.tokenizeRow Frames.defaultParser) . sTextLines
 {-# INLINE streamTokenized #-}
 
 streamParsed :: (V.RMap rs, StrictReadRec rs) => StreamFunctions s m -> FilePath -> s m (V.Rec (Strict.Either Text V.:. V.ElField) rs)
-streamParsed StreamFunctions{..} = sMapper (strictReadRec . Frames.tokenizeRow Frames.defaultParser) . sTextLines
+streamParsed StreamFunctions{..} = sMap (strictReadRec . Frames.tokenizeRow Frames.defaultParser) . sTextLines
 {-# INLINE streamParsed #-}
 
 streamParsedMaybe :: (V.RMap rs, StrictReadRec rs) => StreamFunctions s m-> FilePath -> s m (V.Rec (Maybe V.:. V.ElField) rs)
-streamParsedMaybe StreamFunctions{..} =  sMapper (recStrictEitherToMaybe . strictReadRec . Frames.tokenizeRow Frames.defaultParser) . sTextLines
+streamParsedMaybe StreamFunctions{..} =  sMap (recStrictEitherToMaybe . strictReadRec . Frames.tokenizeRow Frames.defaultParser) . sTextLines
 {-# INLINE streamParsedMaybe #-}
