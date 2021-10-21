@@ -3,6 +3,7 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
 module Frames.Streamly.Internal.Streamly
   (
     streamlyFunctions
@@ -10,7 +11,7 @@ module Frames.Streamly.Internal.Streamly
   )
 where
 
-import Frames.Streamly.Internal.Streaming (StreamFunctions(..))
+import Frames.Streamly.Internal.Streaming (StreamFunctions(..), FoldType)
 
 import Frames.Streamly.Internal.CSV (FramesCSVException(..))
 import           Control.Monad.Catch                     ( MonadThrow(..), MonadCatch)
@@ -25,6 +26,7 @@ import Streamly.Prelude                       (IsStream, SerialT)
 import qualified Streamly.Internal.Unicode.Array.Char as Streamly.Unicode.Array
 import qualified Streamly.Data.Array.Foreign as Streamly.Array
 import qualified Streamly.Unicode.Stream           as Streamly.Unicode
+import qualified Streamly.Internal.Data.Fold.Type as Streamly.Fold
 #else
 import qualified Streamly                               as Streamly
 import           Streamly                                ( IsStream, SerialT )
@@ -33,6 +35,8 @@ import qualified Streamly.Internal.Memory.Array.Types as Streamly.Array
 import qualified Streamly.Data.Unicode.Stream           as Streamly.Unicode
 import qualified Streamly.Internal.Data.Fold as Streamly.Fold
 #endif
+
+type instance FoldType SerialT = Streamly.Fold.Fold
 
 streamlyFunctions :: (Streamly.MonadAsync m, MonadCatch m) => StreamFunctions Streamly.SerialT m
 streamlyFunctions = StreamFunctions
@@ -46,10 +50,28 @@ streamlyFunctions = StreamFunctions
   Streamly.take
   fromEffect
   streamlyFolder
+  streamlyBuildFold
+  streamlyBuildFoldM
+  Streamly.fold
   Streamly.toList
   Streamly.fromFoldable
   streamTextLines
   streamlyWriteTextLines
+
+streamlyBuildFold :: Monad m => (x -> a -> x) -> x -> (x -> b) -> Streamly.Fold.Fold m a b
+#if MIN_VERSION_streamly(0,8,0)
+streamlyBuildFold step start extract = fmap extract $ Streamly.Fold.foldl' step start
+#else
+streamlyBuildFold step start extract = Streamly.Fold.mkPure step start extract
+#endif
+
+streamlyBuildFoldM :: Monad m => (x -> a -> m x) -> m x -> (x -> m b) -> Streamly.Fold.Fold m a b
+#if MIN_VERSION_streamly(0,8,0)
+streamlyBuildFoldM step start extract = Streamly.Fold.rmapM  extract $ Streamly.Fold.foldlM' step start
+#else
+streamlyBuildFoldM step start extract = Streamly.Fold.mkFold step start extract
+#endif
+
 
 streamlyWriteTextLines :: (IsStream s, Streamly.MonadAsync m, MonadCatch m) => FilePath -> s m Text -> m ()
 streamlyWriteTextLines fp s = do
@@ -88,12 +110,7 @@ streamlyThrowIfEmpty s = Streamly.null s >>= flip when (throwM EmptyStreamExcept
 {-# INLINE streamlyThrowIfEmpty #-}
 
 streamlyFolder :: Monad m => (x -> a -> x) -> x -> Streamly.SerialT m a -> m x
-streamlyFolder step start = Streamly.fold fld where
-#if MIN_VERSION_streamly(0,8,0)
-  fld = Streamly.Fold.foldl' step start
-#else
-  fld = Streamly.Fold.mkPure step start id
-#endif
+streamlyFolder step start = Streamly.fold (streamlyBuildFold step start id)
 
 streamWord8 :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m Word8
 streamWord8 =  Streamly.File.toBytes

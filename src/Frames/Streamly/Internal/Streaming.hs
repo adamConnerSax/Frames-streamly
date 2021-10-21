@@ -4,7 +4,10 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TypeFamilies #-}
 module Frames.Streamly.Internal.Streaming where
+
+type family FoldType (s :: (Type -> Type) -> Type -> Type) :: (Type -> Type) -> Type -> Type -> Type
 
 data StreamFunctions (s :: (Type -> Type) -> Type -> Type) (m :: Type -> Type) = StreamFunctions
   { sThrowIfEmpty :: forall x. s m x -> m ()
@@ -27,6 +30,12 @@ data StreamFunctions (s :: (Type -> Type) -> Type -> Type) (m :: Type -> Type) =
     -- ^ lift a monadic action returning a into a stream
   , sFolder :: forall x b. (x -> b -> x) -> x -> s m b -> m x
     -- ^ fold the stream using the given step function and starting value
+  , sBuildFold :: forall x a b.(x -> a -> x) -> x -> (x -> b) -> FoldType s m a b
+    -- ^ Build a fold from (pure) step, start and extract functions
+  , sBuildFoldM :: forall x a b.(x -> a -> m x) -> m x -> (x -> m b) -> FoldType s m a b
+    -- ^ Build a fold from (monadic) step, start and extract functions
+  , sFold :: forall a b.FoldType s m a b -> s m a -> m b
+  -- ^ run a fold on a stream
   , sToList :: forall x. s m x -> m [x]
   -- ^ stream to (lazy) list
   , sFromFoldable :: forall f a.Foldable f => f a -> s m a

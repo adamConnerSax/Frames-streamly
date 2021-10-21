@@ -10,7 +10,7 @@ module Frames.Streamly.Internal.Pipes
   , PipeStream
   ) where
 
-import Frames.Streamly.Internal.Streaming (StreamFunctions(..))
+import Frames.Streamly.Internal.Streaming
 
 import Frames.Streamly.Internal.CSV (FramesCSVException(..))
 
@@ -18,10 +18,19 @@ import qualified Pipes
 import qualified Pipes.Prelude as Pipes
 import qualified System.IO as IO
 
+import qualified Control.Foldl as Foldl
 import           Control.Monad.Catch                     ( MonadThrow(..))
 import Control.Monad.IO.Class (MonadIO(..))
 
 import qualified Data.Text as T
+
+newtype PipeStream m a = PipeStream { producer :: Pipes.Producer a m () }
+
+toPipeStream :: Pipes.Producer a m () -> PipeStream m a
+toPipeStream = PipeStream
+{-# INLINE toPipeStream #-}
+
+type instance FoldType PipeStream = Foldl.FoldM
 
 pipesFunctions :: (Monad m, MonadThrow m, MonadIO m) => StreamFunctions PipeStream m
 pipesFunctions = StreamFunctions
@@ -35,10 +44,20 @@ pipesFunctions = StreamFunctions
   (\n s -> PipeStream $ producer s Pipes.>-> Pipes.take n)
   (PipeStream . pipesFromEffect)
   (\step start -> pipesFolder step start . producer)
+  pipesBuildFold
+  pipesBuildFoldM
+  (\fld s -> Foldl.impurely Pipes.foldM fld $ producer s)
   (Pipes.toListM . producer) -- this might be bad (not lazy) compared to streamly.
   (PipeStream . pipesFromFoldable)
   (PipeStream . pipesReadTextLines)
   (\fp -> pipesWriteTextLines fp . producer)
+
+
+pipesBuildFold :: Monad m => (x -> a -> x) -> x -> (x -> b) -> Foldl.FoldM m a b
+pipesBuildFold step start extract = Foldl.generalize $ Foldl.Fold step start extract
+
+pipesBuildFoldM :: (x -> a -> m x) -> m x -> (x -> m b) -> Foldl.FoldM m a b
+pipesBuildFoldM = Foldl.FoldM
 
 
 pipesThrowIfEmpty :: MonadThrow m => Pipes.Producer a m () -> m ()
@@ -71,11 +90,7 @@ pipesWriteTextLines fp s = do
   Pipes.runEffect $ s Pipes.>-> Pipes.map T.unpack Pipes.>-> Pipes.toHandle h
   liftIO $ IO.hClose h
 
-newtype PipeStream m a = PipeStream { producer :: Pipes.Producer a m () }
 
-toPipeStream :: Pipes.Producer a m () -> PipeStream m a
-toPipeStream = PipeStream
-{-# INLINE toPipeStream #-}
 
 
 pipeStreamUncons :: Monad m => PipeStream m a -> m (Maybe (a, PipeStream m a))

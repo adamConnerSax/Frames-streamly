@@ -36,6 +36,7 @@ module Frames.Streamly.Transform
 where
 
 import qualified Frames.Streamly.InCore as FS
+import Frames.Streamly.Internal.Streamly (streamlyFunctions)
 import Prelude hiding (filter, mapMaybe)
 
 #if MIN_VERSION_streamly(0,8,0)
@@ -74,12 +75,13 @@ fromAhead = Streamly.aheadly
 transform ::
   forall t as bs m.
   (IsStream t
+  , Streamly.MonadAsync m
   , Prim.PrimMonad m
   , Frames.RecVec as
   , Frames.RecVec bs
   )
   => (t m (Frames.Record as) -> Streamly.SerialT m (Frames.Record bs)) -> Frames.FrameRec as -> m (Frames.FrameRec bs)
-transform f = FS.inCoreAoS . f . Streamly.fromFoldable
+transform f = FS.inCoreAoS streamlyFunctions . f . Streamly.fromFoldable
 {-# INLINE transform #-}
 
 -- | Filter using streamly
