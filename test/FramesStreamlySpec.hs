@@ -49,7 +49,7 @@ wrongNumberColumnsSelector :: Selector FStreamly.FramesCSVException
 wrongNumberColumnsSelector (FStreamly.WrongNumberColumnsException _) = True
 wrongNumberColumnsSelector _ = False
 
-spec :: (forall a.Functor (Streaming.FoldType s IO a)) => Streaming.StreamFunctionsWithIO s IO -> Spec
+spec :: Streaming.StreamFunctionsWithIO s IO -> Spec
 spec sfWIO = do
   let sf = Streaming.streamFunctions sfWIO
   forestFiresPath <- runIO $ Paths.usePath Paths.forestFiresPath

@@ -88,7 +88,7 @@ inCoreAoS_F sf@StreamFunctions{..} = sMapFold (return . uncurry Frames.toAoS) $ 
 {-# INLINE inCoreAoS_F #-}
 
 -- | Perform the 'inCoreAoS_F' fold on a stream of records.
-inCoreAoS :: forall m rs s. (Prim.PrimMonad m, Frames.RecVec rs, Functor (FoldType s m (Frames.Record rs)))
+inCoreAoS :: forall m rs s. (Prim.PrimMonad m, Frames.RecVec rs)
           => StreamFunctions s m
           -> s m (Frames.Record rs)
           -> m (Frames.FrameRec rs)
