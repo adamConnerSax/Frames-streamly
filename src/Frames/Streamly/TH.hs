@@ -29,6 +29,7 @@ module Frames.Streamly.TH
   , defaultIsMissing
   , DefaultStream
   , defaultStreamFunctions
+  , defaultStreamFunctionsWithIO
   , OrMissingWhen(..)
   , setOrMissingWhen
   , rowGen
@@ -72,7 +73,7 @@ import qualified Frames.Streamly.ColumnTypeable as FSCT
 import qualified Frames.Streamly.Internal.CSV as ICSV
 import Frames.Streamly.Internal.CSV (ColumnId(..), HeaderText(..) ,ColTypeName(..), OrMissingWhen(..))
 
-import qualified Frames.CSV as Frames (defaultParser, ParserOptions(columnSeparator))
+--import qualified Frames.CSV as Frames (defaultParser, ParserOptions(columnSeparator))
 
 import Data.Char (toLower)
 import qualified Data.Map as Map
@@ -87,6 +88,7 @@ import Language.Haskell.TH hiding (Type)
 import qualified Language.Haskell.TH as TH (Type)
 import Language.Haskell.TH.Syntax hiding (Type)
 
+
 type DefaultStream = SerialT
 
 defaultStreamFunctions :: StreamFunctions DefaultStream IO
@@ -97,6 +99,17 @@ defaultStreamFunctionsWithIO :: StreamFunctionsWithIO DefaultStream IO
 defaultStreamFunctionsWithIO  = streamlyFunctionsWithIO
 {-# INLINE defaultStreamFunctionsWithIO #-}
 
+{-
+type DefaultStream = PipeStream
+
+defaultStreamFunctions :: StreamFunctions PipeStream IO
+defaultStreamFunctions  = pipesFunctions
+{-# INLINE defaultStreamFunctions #-}
+
+defaultStreamFunctionsWithIO :: StreamFunctionsWithIO PipeStream IO
+defaultStreamFunctionsWithIO  = pipesFunctionsWithIO
+{-# INLINE defaultStreamFunctionsWithIO #-}
+-}
 
 -- | Generate a column type.
 recDec :: [TH.Type] -> TH.Type

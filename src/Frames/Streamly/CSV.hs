@@ -116,6 +116,7 @@ import Language.Haskell.TH.Syntax (Lift)
 import qualified Data.Set as Set
 
 import qualified Data.Strict.Either as Strict
+import qualified Data.Strict.Maybe as Strict
 import qualified Data.Text                              as T
 
 import qualified Data.Vinyl                             as Vinyl
@@ -414,7 +415,7 @@ readTableMaybe
     ( Vinyl.RMap rs
     , StrictReadRec rs
     , MonadThrow m
-    , Monad (s m))
+    )
     => StreamFunctionsWithIO s m
     -> FilePath -- ^ file path
     -> s m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Maybe :. ElField@ records after parsing.
@@ -429,7 +430,7 @@ readTableMaybeOpt
     ( Vinyl.RMap rs
     , StrictReadRec rs
     , MonadThrow m
-    , Monad (s m))
+    )
     => StreamFunctionsWithIO s m
     -> ParserOptions -- ^ parsing options
     -> FilePath -- ^ file path
@@ -447,7 +448,7 @@ readTableEither
      ( Vinyl.RMap rs
      , StrictReadRec rs
      , MonadThrow m
-     , Monad (s m))
+     )
   => StreamFunctionsWithIO s m
   -> FilePath -- ^ file path
   -> s m (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Either :. ElField@ records after parsing.
@@ -463,7 +464,7 @@ readTableEitherOpt
      ( Vinyl.RMap rs
      , StrictReadRec rs
      , MonadThrow m
-     , Monad (s m))
+     )
   => StreamFunctionsWithIO s m
   -> ParserOptions -- ^ parsing options
   -> FilePath -- ^ file path
@@ -479,7 +480,7 @@ readTable
      ( Vinyl.RMap rs
      , StrictReadRec rs
      , MonadThrow m
-     , Monad (s m))
+     )
   => StreamFunctionsWithIO s m
   -> FilePath -- ^ file path
   -> s m (Frames.Record rs) -- ^ stream of Records
@@ -493,7 +494,7 @@ readTableOpt
      ( Vinyl.RMap rs
      , StrictReadRec rs
      , MonadThrow m
-     , Monad (s m))
+     )
   => StreamFunctionsWithIO s m
   -> ParserOptions  -- ^ parsing options
   -> FilePath -- ^ file path
@@ -511,7 +512,7 @@ streamTableEither
     ( Vinyl.RMap rs
     , StrictReadRec rs
     , MonadThrow m
-    , Monad (s m))
+    )
     => StreamFunctions s m
     -> s m T.Text -- ^ stream of 'Text' rows
     -> s m (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of parsed @Either :. ElField@ rows
@@ -519,48 +520,51 @@ streamTableEither sf = streamTableEitherOpt sf defaultParser
 {-# INLINEABLE streamTableEither #-}
 
 
+data Acc b = AccInitial
+           | AccResult  !(Maybe [Bool]) !(Strict.Maybe b)
+
+accToMaybe :: Acc b -> Maybe b
+accToMaybe AccInitial = Nothing
+accToMaybe (AccResult _ smb) = case smb of
+  Strict.Nothing -> Nothing
+  Strict.Just x -> Just x
+
 -- | Various parsing options have to handle the header line, if it exists,
 -- differently.  This function pulls all that logic into one place.
 -- We take the 'ParserOptions' and the stream of un-tokenized 'Text' lines
 -- and do whatever is required, checking for various errors
 -- (empty stream, missing headers, wrong number of columns when using positions for typing/naming)
 -- along the way.
-handleHeader :: forall s m. (MonadThrow m)
-             => StreamFunctions s m
-             -> ParserOptions
-             -> s m T.Text
-             -> m (Maybe [Bool], s m T.Text)
-handleHeader StreamFunctions{..} opts s = case columnSelector opts of
-  ICSV.ParseAll True -> return (Nothing, dropFirst s)
-  ICSV.ParseAll False ->  return (Nothing, s)
-  ICSV.ParseIgnoringHeader cs -> checkNumFirstRowCols s cs >> return (Just $ csToBool <$> cs, dropFirst s)
-  ICSV.ParseWithoutHeader cs -> checkNumFirstRowCols s cs >> return (Just $ csToBool <$> cs, s)
-  ICSV.ParseUsingHeader hs -> (, dropFirst s) . Just <$> boolsFromHeader hs s
+handleHeader :: forall m. (MonadThrow m)
+             => ParserOptions
+             -> T.Text
+             -> m (Maybe [Bool], Bool)
+handleHeader opts t = case columnSelector opts of
+  ICSV.ParseAll True -> return (Nothing, True)
+  ICSV.ParseAll False ->  return (Nothing, False)
+  ICSV.ParseIgnoringHeader cs -> checkNumFirstRowCols t cs >> return (Just $ csToBool <$> cs, True)
+  ICSV.ParseWithoutHeader cs -> checkNumFirstRowCols t cs >> return (Just $ csToBool <$> cs, False)
+  ICSV.ParseUsingHeader hs -> (, True) . Just <$> boolsFromHeader hs t
   where
-    dropFirst = sDrop 1
     csToBool x = x /= ICSV.Exclude
 
-    tokenizedFirstRow :: s m T.Text -> m [Text]
-    tokenizedFirstRow s' = do
-      mht <- sUncons s'
-      case mht of
-        Nothing -> throwM ICSV.EmptyStreamException
-        Just (x, _) -> return $ Frames.tokenizeRow (framesParserOptionsForTokenizing opts) x
+    tokenizedFirstRow :: T.Text -> [Text]
+    tokenizedFirstRow x = Frames.tokenizeRow (framesParserOptionsForTokenizing opts) x
 
-    boolsFromHeader :: [ICSV.HeaderText] ->  s m T.Text -> m [Bool]
-    boolsFromHeader hs s' = do
+    boolsFromHeader :: [ICSV.HeaderText] ->  T.Text -> m [Bool]
+    boolsFromHeader hs x = do
       let headersToInclude = Set.fromList hs
-          includeHeader t = t `Set.member` headersToInclude
-      fileHeaders <- ICSV.HeaderText <<$>> tokenizedFirstRow s'
-      let fileHeadersS = Set.fromList fileHeaders
-          notPresentM t = if t `Set.member` fileHeadersS then Nothing else Just t
-          missingIncluded = catMaybes $ fmap notPresentM hs
+          includeHeader y = y `Set.member` headersToInclude
+          fileHeaders = ICSV.HeaderText <$> tokenizedFirstRow x
+          fileHeadersS = Set.fromList fileHeaders
+          notPresentM y = if y `Set.member` fileHeadersS then Nothing else Just y
+          missingIncluded = mapMaybe notPresentM hs
       unless (null missingIncluded) $ throwM $ ICSV.MissingHeadersException missingIncluded
       let bools = includeHeader <$> fileHeaders
       return bools
 
-    checkNumFirstRowCols :: s m T.Text -> [ICSV.ColumnState] -> m ()
-    checkNumFirstRowCols s' cs = tokenizedFirstRow s' >>= checkSameLength cs
+    checkNumFirstRowCols :: T.Text -> [ICSV.ColumnState] -> m ()
+    checkNumFirstRowCols x cs = checkSameLength cs $ tokenizedFirstRow x
 
     checkSameLength :: [ICSV.ColumnState] -> [b] -> m ()
     checkSameLength givenCSs streamCols = do
@@ -572,6 +576,14 @@ handleHeader StreamFunctions{..} opts s = case columnSelector opts of
       when (nGiven /= nStreamCols) $ throwM $ ICSV.WrongNumberColumnsException errMsg
       return ()
 
+parsingScanF :: MonadThrow m => ParserOptions -> (Maybe [Bool] -> Text -> Strict.Maybe b) -> (Acc b -> Text -> m (Acc b))
+parsingScanF opts pF sta t = case sta of
+  AccInitial -> do
+    (rF, dropFirst) <- handleHeader opts t
+    let res = if dropFirst then Strict.Nothing else pF rF t
+    return $ AccResult rF res
+  AccResult rF _ -> return $ AccResult rF $ pF rF t
+
 -- | Convert a stream of lines of `Text` to records.
 -- Each field is returned in an @Either Text@ functor. @Right a@ for successful parses
 -- and @Left Text@ when parsing fails, containing the text that failed to Parse.
@@ -582,15 +594,15 @@ streamTableEitherOpt
     ( Vinyl.RMap rs
     , StrictReadRec rs
     , MonadThrow m
-    , Monad (s m))
+    )
     => StreamFunctions s m
     -> ParserOptions -- ^ parsing options
     -> s m T.Text -- ^ stream of 'Text' rows
     -> s m (Vinyl.Rec ((Either T.Text) Vinyl.:. Vinyl.ElField) rs)  -- ^ stream of parsed @Either :. ElField@ rows
-streamTableEitherOpt sf@StreamFunctions{..} opts s = do
-  (rF, s') <- sFromEffect $ handleHeader sf opts s
-  sMap (recUnStrictEither . parse . useRowFilter rF . Frames.tokenizeRow (framesParserOptionsForTokenizing opts)) s'
+streamTableEitherOpt StreamFunctions{..} opts = sMapMaybe accToMaybe . sScanM (parsingScanF opts parseOne) (return AccInitial)
   where
+    parseOne :: Maybe [Bool] -> Text -> Strict.Maybe (Vinyl.Rec ((Either T.Text) Vinyl.:. Vinyl.ElField) rs)
+    parseOne rF = Strict.Just . recUnStrictEither . parse . useRowFilter rF . Frames.tokenizeRow (framesParserOptionsForTokenizing opts)
     parse = strictReadRec
 {-# INLINEABLE streamTableEitherOpt #-}
 
@@ -602,7 +614,7 @@ streamTableMaybe
     ( Vinyl.RMap rs
     , StrictReadRec rs
     , MonadThrow m
-    , Monad (s m))
+    )
     => StreamFunctions s m
     -> s m T.Text -- ^ stream of 'Text' rows
     -> s m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of parsed @Maybe :. ElField@ rows
@@ -617,7 +629,7 @@ streamTableMaybeOpt
     (Vinyl.RMap rs
     , StrictReadRec rs
     , MonadThrow m
-    , Monad (s m))
+    )
     => StreamFunctions s m
     -> ParserOptions -- ^ parsing options
     -> s m T.Text -- ^ stream of 'Text' rows
@@ -634,7 +646,6 @@ streamTable
     ( Vinyl.RMap rs
     , StrictReadRec rs
     , MonadThrow m
-    , Monad (s m)
     )
     => StreamFunctions s m
     -> s m T.Text -- ^ stream of 'Text' rows
@@ -650,24 +661,29 @@ streamTableOpt
     ( Vinyl.RMap rs
     , StrictReadRec rs
     , MonadThrow m
-    , Monad (s m)
     )
     => StreamFunctions s m
     -> ParserOptions -- ^ parsing options
     -> s m T.Text  -- ^ stream of 'Text' rows
     -> s m (Frames.Record rs) -- ^ stream of Records
-streamTableOpt sf@StreamFunctions{..} opts s = do
+streamTableOpt StreamFunctions{..} opts = sMapMaybe accToMaybe . sScanM (parsingScanF opts parseOne) (return AccInitial)
+  where
+    parseOne :: Maybe [Bool] -> Text -> Strict.Maybe (Frames.Record rs)
+    parseOne rF t = maybe Strict.Nothing Strict.Just $! Frames.recMaybe $! doParseStrict $! useRowFilter rF $! Frames.tokenizeRow (framesParserOptionsForTokenizing opts) t
+{-
   (rF, s') <- sFromEffect $ handleHeader sf opts s
   sMapMaybe (mRec rF) s'
   where
     mRec :: Maybe [Bool] -> Text -> Maybe (Frames.Record rs)
     mRec rf x = Frames.recMaybe $! doParseStrict $! useRowFilter rf $! Frames.tokenizeRow (framesParserOptionsForTokenizing opts) x
+-}
 {-# INLINEABLE streamTableOpt #-}
 
 -- | Parse using StrictReadRec
 doParseStrict :: (V.RMap rs, StrictReadRec rs) => [Text] -> V.Rec (Maybe V.:. V.ElField) rs
 doParseStrict !x = recStrictEitherToMaybe $! strictReadRec x
 {-# INLINEABLE doParseStrict #-}
+
 
 recEitherToMaybe :: Vinyl.RMap rs => Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs -> Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs
 recEitherToMaybe = Vinyl.rmap (either (const (Vinyl.Compose Nothing)) (Vinyl.Compose . Just) . Vinyl.getCompose)
@@ -676,7 +692,6 @@ recEitherToMaybe = Vinyl.rmap (either (const (Vinyl.Compose Nothing)) (Vinyl.Com
 recStrictEitherToMaybe :: Vinyl.RMap rs => Vinyl.Rec (Strict.Either T.Text Vinyl.:. Vinyl.ElField) rs -> Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs
 recStrictEitherToMaybe = Vinyl.rmap (Strict.either (const (Vinyl.Compose Nothing)) (Vinyl.Compose . Just) . Vinyl.getCompose)
 {-# INLINE recStrictEitherToMaybe #-}
-
 
 recUnStrictEither :: Vinyl.RMap rs => Vinyl.Rec (Strict.Either T.Text Vinyl.:. Vinyl.ElField) rs -> Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs
 recUnStrictEither = Vinyl.rmap (Vinyl.Compose . Strict.either Left Right . Vinyl.getCompose)

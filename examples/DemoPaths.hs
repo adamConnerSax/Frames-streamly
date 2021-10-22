@@ -90,14 +90,14 @@ ffInferTypedDayRG = FStreamly.modifyColumnSelector modSelector rg
          1000
          FStreamly.defaultIsMissing
          FStreamly.defaultStreamFunctions
-         (FStreamly.streamTokenized' FStreamly.defaultStreamFunctions (thPath forestFiresPath) FStreamly.defaultSep)
+         (FStreamly.streamTokenized' FStreamly.defaultStreamFunctionsWithIO (thPath forestFiresPath) FStreamly.defaultSep)
     modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
 
 ffInferTypedDayOrMissingRG :: FStreamly.RowGen FStreamly.DefaultStream 'FStreamly.ColumnByName TDColumns
 ffInferTypedDayOrMissingRG = setOrMissingWhen
                               $ ffInferTypedDayRG { FStreamly.rowTypeName = "FFInferTypedDayOrMissing"
                                                   , FStreamly.tablePrefix = "TDOM"
-                                                  , FStreamly.lineReader =  FStreamly.streamTokenized' FStreamly.defaultStreamFunctions (thPath forestFiresPath) FStreamly.defaultSep
+                                                  , FStreamly.lineReader =  FStreamly.streamTokenized' FStreamly.defaultStreamFunctionsWithIO (thPath forestFiresPath) FStreamly.defaultSep
 
                                                   } where
   setOrMissingWhen = FStreamly.setOrMissingWhen (FStreamly.HeaderText "wind") FStreamly.IfSomeMissing
@@ -151,7 +151,7 @@ ffInferTypedDayMonthRG = FStreamly.modifyColumnSelector modSelector rg
          1000
          FStreamly.defaultIsMissing
          FStreamly.defaultStreamFunctions
-         (FStreamly.streamTokenized' FStreamly.defaultStreamFunctions (thPath forestFiresPath) FStreamly.defaultSep)
+         (FStreamly.streamTokenized' FStreamly.defaultStreamFunctionsWithIO (thPath forestFiresPath) FStreamly.defaultSep)
     modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
 
 

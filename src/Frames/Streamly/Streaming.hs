@@ -22,12 +22,12 @@ data StreamFunctions (s :: (Type -> Type) -> Type -> Type) (m :: Type -> Type) =
     -- ^ map each element of the stream using the given function
   , sMapMaybe :: forall x y. (x -> Maybe y) -> s m x -> s m y
     -- ^ map each element of the stream using the given function
+  , sScanM :: forall a x.(x -> a -> m x) -> m x -> s m a -> s m x
+    -- ^ map each item along with a running state to produce a new stream
   , sDrop :: forall a.Int -> s m a -> s m a
     -- ^ drop n items from the head of the stream
   , sTake :: forall a.Int -> s m a -> s m a
   -- ^ take first n elemens of the stream and drop the rest
-  , sFromEffect :: forall a.m a -> s m a
-    -- ^ lift a monadic action returning a into a stream
   , sFolder :: forall x b. (x -> b -> x) -> x -> s m b -> m x
     -- ^ fold the stream using the given step function and starting value
   , sBuildFold :: forall x a b.(x -> a -> x) -> x -> (x -> b) -> FoldType s m a b

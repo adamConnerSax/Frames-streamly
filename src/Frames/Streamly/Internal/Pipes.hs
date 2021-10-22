@@ -1,5 +1,5 @@
 {-# LANGUAGE CPP #-}
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
@@ -17,6 +17,7 @@ import Frames.Streamly.Streaming
 import Frames.Streamly.Internal.CSV (FramesCSVException(..))
 
 import qualified Pipes
+import Pipes ((>->))
 import qualified Pipes.Prelude as Pipes
 import qualified System.IO as IO
 
@@ -36,11 +37,11 @@ pipesFunctions = StreamFunctions
   (\a s -> PipeStream $ Pipes.yield a >> producer s)
   pipeStreamUncons
   (Pipes.head . producer)
-  (\f s -> PipeStream $ producer s Pipes.>-> Pipes.map f)
-  (\f s -> PipeStream $  producer s Pipes.>-> Pipes.wither (return . f))
-  (\n s -> PipeStream $ producer s Pipes.>-> Pipes.drop n)
-  (\n s -> PipeStream $ producer s Pipes.>-> Pipes.take n)
-  (PipeStream . pipesFromEffect)
+  (\f s -> PipeStream $ producer s >-> Pipes.map f)
+  (\f s -> PipeStream $  producer s >-> Pipes.wither (return . f))
+  (\step start s -> PipeStream $ producer s >-> Pipes.scanM step start return)
+  (\n s -> PipeStream $ producer s >-> Pipes.drop n)
+  (\n s -> PipeStream $ producer s >-> Pipes.take n)
   (\step start -> pipesFolder step start . producer)
   pipesBuildFold
   pipesBuildFoldM
@@ -71,10 +72,6 @@ pipesBuildFoldM = Foldl.FoldM
 pipesThrowIfEmpty :: MonadThrow m => Pipes.Producer a m () -> m ()
 pipesThrowIfEmpty s = Pipes.null s >>= \b -> if b then throwM EmptyStreamException else return ()
 {-# INLINE pipesThrowIfEmpty #-}
-
-pipesFromEffect :: Monad m => m a -> Pipes.Producer a m ()
-pipesFromEffect ma = Pipes.lift ma >>= Pipes.yield
-{-# INLINE pipesFromEffect #-}
 
 pipesFolder :: Monad m => (x -> b -> x) -> x -> Pipes.Producer b m () -> m x
 pipesFolder step start = Pipes.fold step start id

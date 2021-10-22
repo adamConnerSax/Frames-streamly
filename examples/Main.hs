@@ -18,6 +18,7 @@ import qualified Frames.Streamly.CSV as FStreamly
 import qualified Frames.Streamly.InCore as FStreamly
 import qualified Frames.Streamly.Transform as FStreamly
 import qualified Frames.Streamly.TH as FStreamly
+import qualified Frames.Streamly.Streaming as FStreamly
 import Frames.Streamly.ColumnTypeable ()
 import qualified Data.Vinyl as V
 import qualified Data.Vinyl.Functor as V
@@ -41,12 +42,13 @@ FStreamly.tableTypes' Paths.ffInferTypedDayOrMissingRG
 FStreamly.tableTypes' Paths.ffInferTypedDayMonthRG
 
 sf = FStreamly.defaultStreamFunctions
+sfWIO = FStreamly.defaultStreamFunctionsWithIO
 
 main :: IO ()
 main = do
   forestFiresPath <- Paths.usePath Paths.forestFiresPath
-  forestFires :: Frames.Frame ForestFires <- FStreamly.inCoreAoS $ FStreamly.readTableOpt sf forestFiresParser forestFiresPath
-  forestFiresColSubset :: Frames.Frame FFColSubset <- FStreamly.inCoreAoS $ FStreamly.readTableOpt sf fFColSubsetParser forestFiresPath
+  forestFires :: Frames.Frame ForestFires <- FStreamly.inCoreAoS sf $ FStreamly.readTableOpt sfWIO forestFiresParser forestFiresPath
+  forestFiresColSubset :: Frames.Frame FFColSubset <- FStreamly.inCoreAoS sf $ FStreamly.readTableOpt sfWIO fFColSubsetParser forestFiresPath
   let filterAndMap :: ForestFires -> Maybe (Frames.Record [FFX, FFY, FFMonth, FFDay, FFTemp, FFWind])
       filterAndMap r = if Frames.rgetField @FFDay r == "fri" then (Just $ Frames.rcast r) else Nothing
       forestFires' = FStreamly.mapMaybe filterAndMap forestFires
@@ -63,26 +65,26 @@ main = do
 
 --  putStrLn $ intercalate "\n" $ fmap show $ FL.fold FL.list forestFiresColSubset'
 --  Streamly.toList csvTextStream >>= putStrLn . Text.unpack . Text.intercalate "\n"
-  FStreamly.writeLines sf "exampleOut.csv" csvTextStream
+  FStreamly.writeLines (FStreamly.streamFunctionsIO sfWIO) "exampleOut.csv" csvTextStream
 --  FStreamly.writeLines "exampleOutCS.csv" csvTextStreamCS
   forestFiresMissingPath <- Paths.usePath Paths.forestFiresMissingPath
   -- try to load with ordinary row
   let tableLength :: Foldable f => f a -> Int
       tableLength = FL.fold FL.length
-  forestFiresMissing :: Frames.Frame FFColSubset <- FStreamly.inCoreAoS $ FStreamly.readTableOpt sf fFColSubsetParser forestFiresMissingPath
+  forestFiresMissing :: Frames.Frame FFColSubset <- FStreamly.inCoreAoS sf $ FStreamly.readTableOpt sfWIO fFColSubsetParser forestFiresMissingPath
   putStrLn $ "Loaded table with missing data using inferred row from complete table. Complete table has "
     <> show (tableLength forestFires)
     <> " and with missing data (1 row missing 'day' a Text entry, one missing 'wind', a Double) has "
     <> show (tableLength forestFiresMissing)
-  forestFiresMissing2 :: Frames.Frame FFInferOrMissing <- FStreamly.inCoreAoS $ FStreamly.readTableOpt sf fFInferOrMissingParser forestFiresMissingPath
+  forestFiresMissing2 :: Frames.Frame FFInferOrMissing <- FStreamly.inCoreAoS sf $ FStreamly.readTableOpt sfWIO fFInferOrMissingParser forestFiresMissingPath
   putStrLn $ "Loaded the same table but with the types for 'day' and 'wind' set to OrMissing. Has "
     <> show (tableLength forestFiresMissing2)
     <> " rows."
-  forestFiresTypedDay :: Frames.Frame FFInferTypedDay <- FStreamly.inCoreAoS $ FStreamly.readTableOpt sf fFInferTypedDayParser forestFiresMissingPath
+  forestFiresTypedDay :: Frames.Frame FFInferTypedDay <- FStreamly.inCoreAoS sf $ FStreamly.readTableOpt sfWIO fFInferTypedDayParser forestFiresMissingPath
   putStrLn $ "Loaded complete table with a DayOfWeek type added. Has "
     <> show (tableLength forestFiresTypedDay)
     <> " rows."
-  forestFiresTypedDayOM :: Frames.Frame FFInferTypedDayOrMissing <- FStreamly.inCoreAoS $ FStreamly.readTableOpt sf fFInferTypedDayOrMissingParser forestFiresMissingPath
+  forestFiresTypedDayOM :: Frames.Frame FFInferTypedDayOrMissing <- FStreamly.inCoreAoS sf $ FStreamly.readTableOpt sfWIO fFInferTypedDayOrMissingParser forestFiresMissingPath
   putStrLn $ "Loaded table with missing data, a DayOfWeek type added and relevant columns set to OrMissing if some missing. Has "
     <> show (tableLength forestFiresTypedDayOM)
     <> " rows."

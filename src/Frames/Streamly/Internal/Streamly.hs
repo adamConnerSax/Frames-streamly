@@ -50,9 +50,9 @@ streamlyFunctions = StreamFunctions
   Streamly.head
   Streamly.map
   Streamly.mapMaybe
+  Streamly.scanlM'
   Streamly.drop
   Streamly.take
-  fromEffect
   streamlyFolder
   streamlyBuildFold
   streamlyBuildFoldM
@@ -103,15 +103,6 @@ streamlyWriteTextLines fp s = do
 streamlyReadTextLines :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m Text
 streamlyReadTextLines = word8ToTextLines2 . streamWord8
 {-# INLINE streamlyReadTextLines #-}
-
-
-fromEffect :: (Monad m, IsStream t) => m a -> t m a
-#if MIN_VERSION_streamly(0,8,0)
-fromEffect = Streamly.fromEffect
-#else
-fromEffect = Streamly.yieldM
-#endif
-{-# INLINE fromEffect #-}
 
 streamlyThrowIfEmpty :: MonadThrow m => Streamly.SerialT m a -> m ()
 streamlyThrowIfEmpty s = Streamly.null s >>= flip when (throwM EmptyStreamException)
