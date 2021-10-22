@@ -61,9 +61,9 @@ where
 
 import Prelude hiding (lift)
 
-import Frames.Streamly.Internal.Streamly (streamlyFunctions, streamlyFunctionsWithIO, SerialT)
-import Frames.Streamly.Internal.Pipes (pipesFunctions, pipesFunctionsWithIO, PipeStream)
-import Frames.Streamly.Streaming
+import Frames.Streamly.Streaming.Streamly (streamlyFunctions, streamlyFunctionsWithIO, SerialT)
+import Frames.Streamly.Streaming.Pipes (pipesFunctions, pipesFunctionsWithIO, PipeStream)
+import Frames.Streamly.Streaming.Interface
 import qualified Frames.Streamly.CSV as SCSV
 import Frames.Streamly.CSV (ParserOptions(..), defaultSep) -- for re-export or TH
 import Frames.Streamly.OrMissing

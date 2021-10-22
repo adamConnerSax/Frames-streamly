@@ -4,7 +4,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
-module Frames.Streamly.Internal.Pipes
+module Frames.Streamly.Streaming.Pipes
   (
     pipesFunctions
   , pipesFunctionsIO
@@ -12,7 +12,7 @@ module Frames.Streamly.Internal.Pipes
   , PipeStream
   ) where
 
-import Frames.Streamly.Streaming
+import Frames.Streamly.Streaming.Interface
 
 import Frames.Streamly.Internal.CSV (FramesCSVException(..))
 
@@ -45,11 +45,16 @@ pipesFunctions = StreamFunctions
   (\step start -> pipesFolder step start . producer)
   pipesBuildFold
   pipesBuildFoldM
+  pipesPostMapM
   (\fld s -> Foldl.impurely Pipes.foldM fld $ producer s)
   (Pipes.toListM . producer) -- this might be bad (not lazy) compared to streamly.
   (PipeStream . pipesFromFoldable)
 {-# INLINEABLE pipesFunctions #-}
 
+pipesPostMapM :: Monad m => (b -> m c) -> Foldl.FoldM m a b -> Foldl.FoldM m a c
+pipesPostMapM f (Foldl.FoldM step begin done) = Foldl.FoldM step begin done'
+  where done' x = done x >>= f
+{-# INLINABLE pipesPostMapM #-}
 
 pipesFunctionsIO :: (Monad m, MonadThrow m, MonadIO m) => StreamFunctionsIO PipeStream m
 pipesFunctionsIO = StreamFunctionsIO

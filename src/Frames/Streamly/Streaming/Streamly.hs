@@ -6,7 +6,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
-module Frames.Streamly.Internal.Streamly
+module Frames.Streamly.Streaming.Streamly
   (
     streamlyFunctions
   , streamlyFunctionsIO
@@ -15,7 +15,7 @@ module Frames.Streamly.Internal.Streamly
   )
 where
 
-import Frames.Streamly.Streaming
+import Frames.Streamly.Streaming.Interface
 
 import Frames.Streamly.Internal.CSV (FramesCSVException(..))
 import           Control.Monad.Catch                     ( MonadThrow(..), MonadCatch)
@@ -56,6 +56,7 @@ streamlyFunctions = StreamFunctions
   streamlyFolder
   streamlyBuildFold
   streamlyBuildFoldM
+  Streamly.Fold.rmapM
   Streamly.fold
   Streamly.toList
   Streamly.fromFoldable

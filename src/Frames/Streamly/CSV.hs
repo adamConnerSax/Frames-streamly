@@ -91,8 +91,6 @@ module Frames.Streamly.CSV
     , readColHeaders
     , framesParserOptionsForTokenizing
     -- * debugging
---    , streamWord8
---    , streamTextLines
     , streamParsed
     , streamParsedMaybe
       -- * Re-exports
@@ -100,12 +98,13 @@ module Frames.Streamly.CSV
     , QuoteChar
     , QuotingMode(..)
     , defaultSep
-
+    , FramesCSVException(..)
     )
 where
 
 import qualified Frames.Streamly.Internal.CSV as ICSV
-import Frames.Streamly.Streaming (StreamFunctions(..), StreamFunctionsIO(..), StreamFunctionsWithIO(..))
+import Frames.Streamly.Internal.CSV (FramesCSVException(..))
+import Frames.Streamly.Streaming.Interface (StreamFunctions(..), StreamFunctionsIO(..), StreamFunctionsWithIO(..))
 import qualified Frames.Streamly.ColumnTypeable as FSCT
 
 import Prelude hiding(getCompose)

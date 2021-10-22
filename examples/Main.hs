@@ -18,7 +18,7 @@ import qualified Frames.Streamly.CSV as FStreamly
 import qualified Frames.Streamly.InCore as FStreamly
 import qualified Frames.Streamly.Transform as FStreamly
 import qualified Frames.Streamly.TH as FStreamly
-import qualified Frames.Streamly.Streaming as FStreamly
+import qualified Frames.Streamly.Streaming.Interface as FStreamly
 import Frames.Streamly.ColumnTypeable ()
 import qualified Data.Vinyl as V
 import qualified Data.Vinyl.Functor as V

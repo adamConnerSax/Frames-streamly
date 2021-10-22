@@ -5,7 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
-module Frames.Streamly.Streaming where
+module Frames.Streamly.Streaming.Interface where
 
 type family FoldType (s :: (Type -> Type) -> Type -> Type) :: (Type -> Type) -> Type -> Type -> Type
 
@@ -34,6 +34,8 @@ data StreamFunctions (s :: (Type -> Type) -> Type -> Type) (m :: Type -> Type) =
     -- ^ Build a fold from (pure) step, start and extract functions
   , sBuildFoldM :: forall x a b.(x -> a -> m x) -> m x -> (x -> m b) -> FoldType s m a b
     -- ^ Build a fold from (monadic) step, start and extract functions
+  , sMapFold :: forall a b c. (b -> m c) -> FoldType s m a b -> FoldType s m a c
+    -- ^ map the output of a fold
   , sFold :: forall a b.FoldType s m a b -> s m a -> m b
   -- ^ run a fold on a stream
   , sToList :: forall x. s m x -> m [x]
