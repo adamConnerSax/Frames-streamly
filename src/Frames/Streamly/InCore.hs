@@ -101,7 +101,7 @@ inCoreAoS'_F ::  forall ss rs m s. (Prim.PrimMonad m, Frames.RecVec rs, Functor 
              => StreamFunctions s m
              -> (Frames.Rec ((->) Int Frames.:. Frames.ElField) rs -> Frames.Rec ((->) Int Frames.:. Frames.ElField) ss)
              -> FoldType s m (Frames.Record rs) (Frames.FrameRec ss)
-inCoreAoS'_F sf@StreamFunctions{..} f  = fmap (uncurry Frames.toAoS . aux) (inCoreSoA_F sf)
+inCoreAoS'_F sf f  = fmap (uncurry Frames.toAoS . aux) (inCoreSoA_F sf)
   where aux (x,y) = (x, f y)
 {-# INLINE inCoreAoS'_F #-}
 

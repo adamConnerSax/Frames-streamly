@@ -60,8 +60,8 @@ where
 
 import Prelude hiding (lift)
 
-import Frames.Streamly.Internal.Streamly (streamlyFunctions, streamlyFunctionsIO, streamlyFunctionsWithIO, SerialT)
-import Frames.Streamly.Internal.Pipes (pipesFunctions, PipeStream)
+import Frames.Streamly.Internal.Streamly (streamlyFunctions, streamlyFunctionsWithIO, SerialT)
+import Frames.Streamly.Internal.Pipes (pipesFunctions, pipesFunctionsWithIO, PipeStream)
 import Frames.Streamly.Streaming
 import qualified Frames.Streamly.CSV as SCSV
 import Frames.Streamly.CSV (ParserOptions(..), defaultSep) -- for re-export or TH
@@ -72,7 +72,7 @@ import qualified Frames.Streamly.ColumnTypeable as FSCT
 import qualified Frames.Streamly.Internal.CSV as ICSV
 import Frames.Streamly.Internal.CSV (ColumnId(..), HeaderText(..) ,ColTypeName(..), OrMissingWhen(..))
 
-import qualified Frames.CSV as Frames (defaultParser, tokenizeRow, ParserOptions(columnSeparator))
+import qualified Frames.CSV as Frames (defaultParser, ParserOptions(columnSeparator))
 
 import Data.Char (toLower)
 import qualified Data.Map as Map
@@ -83,7 +83,6 @@ import Data.Vinyl.TypeLevel (RIndex)
 import Frames.Col ((:->))
 import Frames.Rec(Record)
 import Frames.Utils
-import qualified GHC.Types as GHC
 import Language.Haskell.TH hiding (Type)
 import qualified Language.Haskell.TH as TH (Type)
 import Language.Haskell.TH.Syntax hiding (Type)
@@ -93,10 +92,6 @@ type DefaultStream = SerialT
 defaultStreamFunctions :: StreamFunctions DefaultStream IO
 defaultStreamFunctions  = streamlyFunctions
 {-# INLINE defaultStreamFunctions #-}
-
-defaultStreamFunctionsIO :: StreamFunctionsIO DefaultStream IO
-defaultStreamFunctionsIO  = streamlyFunctionsIO
-{-# INLINE defaultStreamFunctionsIO #-}
 
 defaultStreamFunctionsWithIO :: StreamFunctionsWithIO DefaultStream IO
 defaultStreamFunctionsWithIO  = streamlyFunctionsWithIO
@@ -489,8 +484,7 @@ tableTypesText' RowGen {..} = do
   optsTy <- sigD optsName [t|ParserOptions|]
   optsDec <- valD (varP optsName) (normalB $ lift opts) []
   return (recTy : optsTy : optsDec : colDecs)
-  where tokenizerPOs sep = Frames.defaultParser { Frames.columnSeparator = sep }
-        mkColDecs colNm colTy = do
+  where mkColDecs colNm colTy = do
           let safeName = T.unpack (sanitizeTypeName colNm)
           mColNm <- lookupTypeName (tablePrefix ++ safeName)
           case mColNm of
@@ -521,9 +515,8 @@ tableTypes' (RowGen {..}) = do
   optsTy <- sigD optsName [t|ParserOptions|]
   optsDec <- valD (varP optsName) (normalB $ lift opts) []
   return (recTy : optsTy : optsDec : colDecs)
-  where tokenizerPOs sep = Frames.defaultParser { Frames.columnSeparator = sep }
-        lineSource :: s IO [Text]
-        lineSource = (sTake streamFunctions) inferencePrefix $ lineReader
+  where lineSource :: s IO [Text]
+        lineSource = sTake streamFunctions inferencePrefix $ lineReader
         inferMaybe :: ICSV.OrMissingWhen -> FSCU.SomeMissing -> Bool
         inferMaybe mw sm = case mw of
           ICSV.NeverMissing -> False

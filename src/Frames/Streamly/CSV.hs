@@ -317,7 +317,7 @@ writeStreamSV
   -> FilePath -- ^ path
   -> s m (Frames.Record rs) -- ^ stream of Records
   -> m ()
-writeStreamSV sf@StreamFunctionsWithIO{..} sep fp = sWriteTextLines streamFunctionsIO fp . streamToSV streamFunctions sep
+writeStreamSV StreamFunctionsWithIO{..} sep fp = sWriteTextLines streamFunctionsIO fp . streamToSV streamFunctions sep
 {-# INLINEABLE writeStreamSV #-}
 
 -- | write a foldable of @Records@ to a file, one line per @Record@.
@@ -468,7 +468,7 @@ readTableEitherOpt
   -> ParserOptions -- ^ parsing options
   -> FilePath -- ^ file path
   -> s m (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Either :. ElField@ records after parsing.
-readTableEitherOpt sf@StreamFunctionsWithIO{..} opts = streamTableEitherOpt streamFunctions opts . sReadTextLines streamFunctionsIO
+readTableEitherOpt StreamFunctionsWithIO{..} opts = streamTableEitherOpt streamFunctions opts . sReadTextLines streamFunctionsIO
 {-# INLINEABLE readTableEitherOpt #-}
 
 -- | Stream Table from a file path, dropping rows where any field fails to parse
@@ -498,7 +498,7 @@ readTableOpt
   -> ParserOptions  -- ^ parsing options
   -> FilePath -- ^ file path
   -> s m (Frames.Record rs)  -- ^ stream of Records
-readTableOpt sf@StreamFunctionsWithIO{..} !opts !fp = streamTableOpt streamFunctions opts $! sReadTextLines streamFunctionsIO fp
+readTableOpt StreamFunctionsWithIO{..} !opts !fp = streamTableOpt streamFunctions opts $! sReadTextLines streamFunctionsIO fp
 {-# INLINEABLE readTableOpt #-}
 
 -- | Convert a stream of lines of `Text` to a table
