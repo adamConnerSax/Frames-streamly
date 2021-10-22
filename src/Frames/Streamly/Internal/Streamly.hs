@@ -3,15 +3,19 @@
 {-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 module Frames.Streamly.Internal.Streamly
   (
     streamlyFunctions
+  , streamlyFunctionsIO
+  , streamlyFunctionsWithIO
   , SerialT
   )
 where
 
-import Frames.Streamly.Internal.Streaming (StreamFunctions(..), FoldType)
+import Frames.Streamly.Internal.Streaming
 
 import Frames.Streamly.Internal.CSV (FramesCSVException(..))
 import           Control.Monad.Catch                     ( MonadThrow(..), MonadCatch)
@@ -38,7 +42,7 @@ import qualified Streamly.Internal.Data.Fold as Streamly.Fold
 
 type instance FoldType SerialT = Streamly.Fold.Fold
 
-streamlyFunctions :: (Streamly.MonadAsync m, MonadCatch m) => StreamFunctions Streamly.SerialT m
+streamlyFunctions :: MonadThrow m => StreamFunctions Streamly.SerialT m
 streamlyFunctions = StreamFunctions
   streamlyThrowIfEmpty
   Streamly.cons
@@ -55,8 +59,16 @@ streamlyFunctions = StreamFunctions
   Streamly.fold
   Streamly.toList
   Streamly.fromFoldable
-  streamTextLines
-  streamlyWriteTextLines
+{-# INLINABLE streamlyFunctions #-}
+
+streamlyFunctionsIO :: (Streamly.MonadAsync m, MonadCatch m)  => StreamFunctionsIO Streamly.SerialT m
+streamlyFunctionsIO = StreamFunctionsIO streamlyReadTextLines streamlyWriteTextLines
+{-# INLINABLE streamlyFunctionsIO #-}
+
+streamlyFunctionsWithIO :: (Streamly.MonadAsync m, MonadCatch m)  => StreamFunctionsWithIO Streamly.SerialT m
+streamlyFunctionsWithIO = StreamFunctionsWithIO streamlyFunctions streamlyFunctionsIO
+{-# INLINABLE streamlyFunctionsWithIO #-}
+
 
 streamlyBuildFold :: Monad m => (x -> a -> x) -> x -> (x -> b) -> Streamly.Fold.Fold m a b
 #if MIN_VERSION_streamly(0,8,0)
@@ -88,6 +100,11 @@ streamlyWriteTextLines fp s = do
     $ Streamly.intersperse "\n" s
 {-# INLINEABLE streamlyWriteTextLines #-}
 
+streamlyReadTextLines :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m Text
+streamlyReadTextLines = word8ToTextLines2 . streamWord8
+{-# INLINE streamlyReadTextLines #-}
+
+
 fromEffect :: (Monad m, IsStream t) => m a -> t m a
 #if MIN_VERSION_streamly(0,8,0)
 fromEffect = Streamly.fromEffect
@@ -95,7 +112,6 @@ fromEffect = Streamly.fromEffect
 fromEffect = Streamly.yieldM
 #endif
 {-# INLINE fromEffect #-}
-{-# INLINEABLE streamlyFunctions #-}
 
 streamlyUnfoldList :: (IsStream t, Monad m) => t m [a] -> t m a
 #if MIN_VERSION_streamly(0,8,0)
@@ -111,14 +127,12 @@ streamlyThrowIfEmpty s = Streamly.null s >>= flip when (throwM EmptyStreamExcept
 
 streamlyFolder :: Monad m => (x -> a -> x) -> x -> Streamly.SerialT m a -> m x
 streamlyFolder step start = Streamly.fold (streamlyBuildFold step start id)
+{-# INLINABLE streamlyFolder #-}
 
 streamWord8 :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m Word8
 streamWord8 =  Streamly.File.toBytes
 {-# INLINE streamWord8 #-}
 
-streamTextLines :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m Text
-streamTextLines = word8ToTextLines2 . streamWord8
-{-# INLINE streamTextLines #-}
 
 -- | Convert a stream of Word8 to lines of `Text` by decoding as UTF8 and splitting on "\n"
 word8ToTextLines :: (IsStream t, MonadIO m) => t m Word8 -> t m T.Text

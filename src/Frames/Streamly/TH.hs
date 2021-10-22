@@ -60,9 +60,9 @@ where
 
 import Prelude hiding (lift)
 
-import Frames.Streamly.Internal.Streamly (streamlyFunctions, SerialT)
+import Frames.Streamly.Internal.Streamly (streamlyFunctions, streamlyFunctionsIO, streamlyFunctionsWithIO, SerialT)
 import Frames.Streamly.Internal.Pipes (pipesFunctions, PipeStream)
-import Frames.Streamly.Internal.Streaming (StreamFunctions(..))
+import Frames.Streamly.Internal.Streaming
 import qualified Frames.Streamly.CSV as SCSV
 import Frames.Streamly.CSV (ParserOptions(..), defaultSep) -- for re-export or TH
 import Frames.Streamly.OrMissing
@@ -92,6 +92,16 @@ type DefaultStream = SerialT
 
 defaultStreamFunctions :: StreamFunctions DefaultStream IO
 defaultStreamFunctions  = streamlyFunctions
+{-# INLINE defaultStreamFunctions #-}
+
+defaultStreamFunctionsIO :: StreamFunctionsIO DefaultStream IO
+defaultStreamFunctionsIO  = streamlyFunctionsIO
+{-# INLINE defaultStreamFunctionsIO #-}
+
+defaultStreamFunctionsWithIO :: StreamFunctionsWithIO DefaultStream IO
+defaultStreamFunctionsWithIO  = streamlyFunctionsWithIO
+{-# INLINE defaultStreamFunctionsWithIO #-}
+
 
 -- | Generate a column type.
 recDec :: [TH.Type] -> TH.Type
@@ -260,7 +270,7 @@ rowGen fp = RowGen
   1000
   defaultIsMissing
   defaultStreamFunctions
-  (SCSV.streamTokenized' defaultStreamFunctions fp SCSV.defaultSep)
+  (SCSV.streamTokenized' defaultStreamFunctionsWithIO fp SCSV.defaultSep)
 {-# INLINEABLE rowGen #-}
 
 -- | Like 'rowGen', but will also generate custom data types for
@@ -275,7 +285,7 @@ rowGenCat fp = RowGen
   1000
   defaultIsMissing
   defaultStreamFunctions
-  (SCSV.streamTokenized' defaultStreamFunctions fp SCSV.defaultSep)
+  (SCSV.streamTokenized' defaultStreamFunctionsWithIO fp SCSV.defaultSep)
 {-# INLINEABLE rowGenCat #-}
 
 -- | Update or replace the columnHandler in a RowGen

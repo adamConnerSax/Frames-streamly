@@ -7,6 +7,8 @@
 module Frames.Streamly.Internal.Pipes
   (
     pipesFunctions
+  , pipesFunctionsIO
+  , pipesFunctionsWithIO
   , PipeStream
   ) where
 
@@ -32,7 +34,7 @@ toPipeStream = PipeStream
 
 type instance FoldType PipeStream = Foldl.FoldM
 
-pipesFunctions :: (Monad m, MonadThrow m, MonadIO m) => StreamFunctions PipeStream m
+pipesFunctions :: (MonadThrow m, Monad m) => StreamFunctions PipeStream m
 pipesFunctions = StreamFunctions
   (pipesThrowIfEmpty . producer)
   (\a s -> PipeStream $ Pipes.yield a >> producer s)
@@ -49,16 +51,26 @@ pipesFunctions = StreamFunctions
   (\fld s -> Foldl.impurely Pipes.foldM fld $ producer s)
   (Pipes.toListM . producer) -- this might be bad (not lazy) compared to streamly.
   (PipeStream . pipesFromFoldable)
+{-# INLINEABLE pipesFunctions #-}
+
+
+pipesFunctionsIO :: (Monad m, MonadThrow m, MonadIO m) => StreamFunctionsIO PipeStream m
+pipesFunctionsIO = StreamFunctionsIO
   (PipeStream . pipesReadTextLines)
   (\fp -> pipesWriteTextLines fp . producer)
+{-# INLINEABLE pipesFunctionsIO #-}
 
+pipesFunctionsWithIO :: (Monad m, MonadThrow m, MonadIO m) => StreamFunctionsWithIO PipeStream m
+pipesFunctionsWithIO = StreamFunctionsWithIO pipesFunctions pipesFunctionsIO
+{-# INLINEABLE pipesFunctionsWithIO #-}
 
 pipesBuildFold :: Monad m => (x -> a -> x) -> x -> (x -> b) -> Foldl.FoldM m a b
 pipesBuildFold step start extract = Foldl.generalize $ Foldl.Fold step start extract
+{-# INLINE pipesBuildFold #-}
 
 pipesBuildFoldM :: (x -> a -> m x) -> m x -> (x -> m b) -> Foldl.FoldM m a b
 pipesBuildFoldM = Foldl.FoldM
-
+{-# INLINE pipesBuildFoldM #-}
 
 pipesThrowIfEmpty :: MonadThrow m => Pipes.Producer a m () -> m ()
 pipesThrowIfEmpty s = Pipes.null s >>= \b -> if b then throwM EmptyStreamException else return ()
@@ -70,28 +82,26 @@ pipesFromEffect ma = Pipes.lift ma >>= Pipes.yield
 
 pipesFolder :: Monad m => (x -> b -> x) -> x -> Pipes.Producer b m () -> m x
 pipesFolder step start = Pipes.fold step start id
+{-# INLINE pipesFolder #-}
+
 
 pipesFromFoldable :: (Functor m, Foldable f) => f a -> Pipes.Producer a m ()
 pipesFromFoldable = Pipes.each
-
--- Pipes.concat :: Foldable f => Pipe (f a) a m r
-pipesUnfoldList ::  Functor m => Pipes.Producer [a] m x -> Pipes.Producer a m x
-pipesUnfoldList t = t Pipes.>-> Pipes.concat
+{-# INLINE pipesFromFoldable #-}
 
 -- how/when does this handle get closed??
 pipesReadTextLines :: MonadIO m => FilePath -> Pipes.Producer Text m ()
 pipesReadTextLines fp = do
   h <- Pipes.lift $ liftIO $ IO.openFile fp IO.ReadMode
   Pipes.fromHandle h Pipes.>-> Pipes.map T.pack
+{-# INLINABLE pipesReadTextLines #-}
 
 pipesWriteTextLines :: MonadIO m => FilePath -> Pipes.Producer Text m () -> m ()
 pipesWriteTextLines fp s = do
   h <- liftIO $ IO.openFile fp IO.WriteMode
   Pipes.runEffect $ s Pipes.>-> Pipes.map T.unpack Pipes.>-> Pipes.toHandle h
   liftIO $ IO.hClose h
-
-
-
+{-# INLINABLE pipesWriteTextLines #-}
 
 pipeStreamUncons :: Monad m => PipeStream m a -> m (Maybe (a, PipeStream m a))
 pipeStreamUncons p = do
@@ -99,3 +109,4 @@ pipeStreamUncons p = do
   case pUncons of
     Left () -> return Nothing
     Right (a, s) -> return $ Just (a, PipeStream s)
+{-# INLINABLE pipeStreamUncons #-}

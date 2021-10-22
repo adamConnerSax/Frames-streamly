@@ -40,8 +40,18 @@ data StreamFunctions (s :: (Type -> Type) -> Type -> Type) (m :: Type -> Type) =
   -- ^ stream to (lazy) list
   , sFromFoldable :: forall f a.Foldable f => f a -> s m a
     -- ^ build a stream of @a@ from a foldable of @a@
-  , sReadTextLines :: FilePath -> s m Text
+  }
+
+data StreamFunctionsIO (s :: (Type -> Type) -> Type -> Type) (m :: Type -> Type) = StreamFunctionsIO
+  {
+    sReadTextLines :: FilePath -> s m Text
     -- ^ create a stream of lines of text by reading the given file
   , sWriteTextLines :: FilePath -> s m Text -> m ()
     -- ^ streamly version handles invalid characters
+  }
+
+data StreamFunctionsWithIO (s :: (Type -> Type) -> Type -> Type) (m :: Type -> Type) = StreamFunctionsWithIO
+  {
+    streamFunctions :: StreamFunctions s m
+  , streamFunctionsIO :: StreamFunctionsIO s m
   }

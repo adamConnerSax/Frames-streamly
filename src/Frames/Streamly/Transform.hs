@@ -47,6 +47,7 @@ import           Streamly                                ( IsStream )
 #endif
 
 import qualified Streamly.Prelude                       as Streamly
+import Control.Monad.Catch (MonadThrow)
 import qualified Control.Monad.Primitive                as Prim
 import Control.Monad.ST (runST)
 import qualified Frames
@@ -75,8 +76,8 @@ fromAhead = Streamly.aheadly
 transform ::
   forall t as bs m.
   (IsStream t
-  , Streamly.MonadAsync m
   , Prim.PrimMonad m
+  , MonadThrow m
   , Frames.RecVec as
   , Frames.RecVec bs
   )
@@ -85,7 +86,7 @@ transform f = FS.inCoreAoS streamlyFunctions . f . Streamly.fromFoldable
 {-# INLINE transform #-}
 
 -- | Filter using streamly
-filter :: (Frames.RecVec as) => (Frames.Record as -> Bool) -> Frames.FrameRec as -> Frames.FrameRec as
+filter :: Frames.RecVec as => (Frames.Record as -> Bool) -> Frames.FrameRec as -> Frames.FrameRec as
 filter f frame = runST $ transform (fromSerial . Streamly.filter f) frame
 {-# INLINE filter #-}
 

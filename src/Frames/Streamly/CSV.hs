@@ -105,7 +105,7 @@ module Frames.Streamly.CSV
 where
 
 import qualified Frames.Streamly.Internal.CSV as ICSV
-import Frames.Streamly.Internal.Streaming (StreamFunctions(..))
+import Frames.Streamly.Internal.Streaming (StreamFunctions(..), StreamFunctionsIO(..), StreamFunctionsWithIO(..))
 import qualified Frames.Streamly.ColumnTypeable as FSCT
 
 import Prelude hiding(getCompose)
@@ -158,8 +158,8 @@ defaultParser = ParserOptions (ICSV.ParseAll True) (Frames.columnSeparator x) (F
 {-# INLINE defaultParser #-}
 
 -- | Write a stream of Text to file at FilePath
-writeLines :: StreamFunctions s m -> FilePath -> s m Text -> m ()
-writeLines StreamFunctions{..} = sWriteTextLines
+writeLines :: StreamFunctionsIO s m -> FilePath -> s m Text -> m ()
+writeLines StreamFunctionsIO{..} = sWriteTextLines
 
 -- | Given a stream of @Records@, for which all fields satisfy the `ShowCSV` constraint,
 -- produce a stream of `Text`, one item (line) per `Record` with the specified separator
@@ -312,12 +312,12 @@ writeStreamSV
    , Vinyl.RecordToList rs
    , Vinyl.RecMapMethod Frames.ShowCSV Vinyl.ElField rs
    )
-  => StreamFunctions s m
+  => StreamFunctionsWithIO s m
   -> T.Text -- ^ column separator
   -> FilePath -- ^ path
   -> s m (Frames.Record rs) -- ^ stream of Records
   -> m ()
-writeStreamSV sf@StreamFunctions{..} sep fp = sWriteTextLines fp . streamToSV sf sep
+writeStreamSV sf@StreamFunctionsWithIO{..} sep fp = sWriteTextLines streamFunctionsIO fp . streamToSV streamFunctions sep
 {-# INLINEABLE writeStreamSV #-}
 
 -- | write a foldable of @Records@ to a file, one line per @Record@.
@@ -329,12 +329,12 @@ writeSV
    , Vinyl.RecMapMethod Frames.ShowCSV Vinyl.ElField rs
    , Foldable f
    )
-  => StreamFunctions s m
+  => StreamFunctionsWithIO s m
   -> T.Text -- ^ column separator
   -> FilePath -- ^ file path
   -> f (Frames.Record rs) -- ^ Foldable of Records
   -> m ()
-writeSV sf@StreamFunctions{..} sep fp = writeStreamSV sf sep fp . sFromFoldable
+writeSV sf@StreamFunctionsWithIO{..} sep fp = writeStreamSV sf sep fp . sFromFoldable streamFunctions
 {-# INLINEABLE writeSV #-}
 
 -- | write a foldable of @Records@ to a file, one line per @Record@.
@@ -346,7 +346,7 @@ writeCSV
    , Vinyl.RecMapMethod Frames.ShowCSV Vinyl.ElField rs
    , Foldable f
    )
-  => StreamFunctions s m
+  => StreamFunctionsWithIO s m
   -> FilePath -- ^ file path
   -> f (Frames.Record rs) -- ^ 'Foldable' of Records
   -> m ()
@@ -363,12 +363,12 @@ writeStreamSV_Show
    , Vinyl.RecordToList rs
    , Vinyl.RecMapMethod Show Vinyl.ElField rs
    )
-  => StreamFunctions s m
+  => StreamFunctionsWithIO s m
   -> T.Text -- ^ column separator
   -> FilePath -- ^ file path
   -> s m (Frames.Record rs) -- ^ stream of Records
   -> m ()
-writeStreamSV_Show sf@StreamFunctions{..} sep fp = sWriteTextLines fp . streamSVClass @Show sf (T.pack . show) sep
+writeStreamSV_Show StreamFunctionsWithIO{..} sep fp = sWriteTextLines streamFunctionsIO fp . streamSVClass @Show streamFunctions (T.pack . show) sep
 {-# INLINEABLE writeStreamSV_Show #-}
 
 -- | write a foldable of @Records@ to a file, one line per @Record@.
@@ -380,12 +380,12 @@ writeSV_Show
    , Vinyl.RecMapMethod Show Vinyl.ElField rs
    , Foldable f
    )
-  => StreamFunctions s m
+  => StreamFunctionsWithIO s m
   -> T.Text -- ^ column separator
   -> FilePath  -- ^ file path
   -> f (Frames.Record rs) -- ^ 'Foldable' of Records
   -> m ()
-writeSV_Show sf@StreamFunctions{..} sep fp = writeStreamSV_Show sf sep fp . sFromFoldable
+writeSV_Show sf@StreamFunctionsWithIO{..} sep fp = writeStreamSV_Show sf sep fp . sFromFoldable streamFunctions
 {-# INLINEABLE writeSV_Show #-}
 
 -- | write a foldable of @Records@ to a file, one line per @Record@.
@@ -397,7 +397,7 @@ writeCSV_Show
    , Vinyl.RecMapMethod Show Vinyl.ElField rs
    , Foldable f
    )
-  => StreamFunctions s m
+  => StreamFunctionsWithIO s m
   -> FilePath -- ^ file path
   -> f (Frames.Record rs) -- ^ 'Foldable' of Records
   -> m ()
@@ -415,7 +415,7 @@ readTableMaybe
     , StrictReadRec rs
     , MonadThrow m
     , Monad (s m))
-    => StreamFunctions s m
+    => StreamFunctionsWithIO s m
     -> FilePath -- ^ file path
     -> s m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Maybe :. ElField@ records after parsing.
 readTableMaybe sf = readTableMaybeOpt sf defaultParser
@@ -430,11 +430,11 @@ readTableMaybeOpt
     , StrictReadRec rs
     , MonadThrow m
     , Monad (s m))
-    => StreamFunctions s m
+    => StreamFunctionsWithIO s m
     -> ParserOptions -- ^ parsing options
     -> FilePath -- ^ file path
     -> s m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Maybe :. ElField@ records after parsing.
-readTableMaybeOpt sf@StreamFunctions{..} opts = sMap recEitherToMaybe . readTableEitherOpt sf opts
+readTableMaybeOpt sf@StreamFunctionsWithIO{..} opts = sMap streamFunctions recEitherToMaybe . readTableEitherOpt sf opts
 {-# INLINEABLE readTableMaybeOpt #-}
 
 -- | Stream a table from a file path.
@@ -448,7 +448,7 @@ readTableEither
      , StrictReadRec rs
      , MonadThrow m
      , Monad (s m))
-  => StreamFunctions s m
+  => StreamFunctionsWithIO s m
   -> FilePath -- ^ file path
   -> s m (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Either :. ElField@ records after parsing.
 readTableEither sf = readTableEitherOpt sf defaultParser
@@ -464,11 +464,11 @@ readTableEitherOpt
      , StrictReadRec rs
      , MonadThrow m
      , Monad (s m))
-  => StreamFunctions s m
+  => StreamFunctionsWithIO s m
   -> ParserOptions -- ^ parsing options
   -> FilePath -- ^ file path
   -> s m (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Either :. ElField@ records after parsing.
-readTableEitherOpt sf@StreamFunctions{..} opts = streamTableEitherOpt sf opts . sReadTextLines
+readTableEitherOpt sf@StreamFunctionsWithIO{..} opts = streamTableEitherOpt streamFunctions opts . sReadTextLines streamFunctionsIO
 {-# INLINEABLE readTableEitherOpt #-}
 
 -- | Stream Table from a file path, dropping rows where any field fails to parse
@@ -480,7 +480,7 @@ readTable
      , StrictReadRec rs
      , MonadThrow m
      , Monad (s m))
-  => StreamFunctions s m
+  => StreamFunctionsWithIO s m
   -> FilePath -- ^ file path
   -> s m (Frames.Record rs) -- ^ stream of Records
 readTable sf = readTableOpt sf defaultParser
@@ -494,11 +494,11 @@ readTableOpt
      , StrictReadRec rs
      , MonadThrow m
      , Monad (s m))
-  => StreamFunctions s m
+  => StreamFunctionsWithIO s m
   -> ParserOptions  -- ^ parsing options
   -> FilePath -- ^ file path
   -> s m (Frames.Record rs)  -- ^ stream of Records
-readTableOpt sf@StreamFunctions{..} !opts !fp = streamTableOpt sf opts $! sReadTextLines fp
+readTableOpt sf@StreamFunctionsWithIO{..} !opts !fp = streamTableOpt streamFunctions opts $! sReadTextLines streamFunctionsIO fp
 {-# INLINEABLE readTableOpt #-}
 
 -- | Convert a stream of lines of `Text` to a table
@@ -824,19 +824,19 @@ streamTextLines = word8ToTextLines2 . streamWord8
 {-# INLINE streamTextLines #-}
 -}
 
-streamTokenized' :: StreamFunctions s m -> FilePath -> Frames.Separator -> s m [Text]
-streamTokenized' StreamFunctions{..} fp sep =  sMap (fmap T.copy . Frames.tokenizeRow popts) $ sReadTextLines fp where
+streamTokenized' :: StreamFunctionsWithIO s m -> FilePath -> Frames.Separator -> s m [Text]
+streamTokenized' StreamFunctionsWithIO{..} fp sep =  sMap streamFunctions (fmap T.copy . Frames.tokenizeRow popts) $ sReadTextLines streamFunctionsIO fp where
   popts = Frames.defaultParser { Frames.columnSeparator = sep }
 {-# INLINE streamTokenized' #-}
 
-streamTokenized :: StreamFunctions s m -> FilePath -> s m [Text]
-streamTokenized StreamFunctions{..} =  sMap (fmap T.copy . Frames.tokenizeRow Frames.defaultParser) . sReadTextLines
+streamTokenized :: StreamFunctionsWithIO s m -> FilePath -> s m [Text]
+streamTokenized StreamFunctionsWithIO{..} =  sMap streamFunctions (fmap T.copy . Frames.tokenizeRow Frames.defaultParser) . sReadTextLines streamFunctionsIO
 {-# INLINE streamTokenized #-}
 
-streamParsed :: (V.RMap rs, StrictReadRec rs) => StreamFunctions s m -> FilePath -> s m (V.Rec (Strict.Either Text V.:. V.ElField) rs)
-streamParsed StreamFunctions{..} = sMap (strictReadRec . Frames.tokenizeRow Frames.defaultParser) . sReadTextLines
+streamParsed :: (V.RMap rs, StrictReadRec rs) => StreamFunctionsWithIO s m -> FilePath -> s m (V.Rec (Strict.Either Text V.:. V.ElField) rs)
+streamParsed StreamFunctionsWithIO{..} = sMap streamFunctions (strictReadRec . Frames.tokenizeRow Frames.defaultParser) . sReadTextLines streamFunctionsIO
 {-# INLINE streamParsed #-}
 
-streamParsedMaybe :: (V.RMap rs, StrictReadRec rs) => StreamFunctions s m-> FilePath -> s m (V.Rec (Maybe V.:. V.ElField) rs)
-streamParsedMaybe StreamFunctions{..} =  sMap (recStrictEitherToMaybe . strictReadRec . Frames.tokenizeRow Frames.defaultParser) . sReadTextLines
+streamParsedMaybe :: (V.RMap rs, StrictReadRec rs) => StreamFunctionsWithIO s m-> FilePath -> s m (V.Rec (Maybe V.:. V.ElField) rs)
+streamParsedMaybe StreamFunctionsWithIO{..} =  sMap streamFunctions (recStrictEitherToMaybe . strictReadRec . Frames.tokenizeRow Frames.defaultParser) . sReadTextLines streamFunctionsIO
 {-# INLINE streamParsedMaybe #-}
