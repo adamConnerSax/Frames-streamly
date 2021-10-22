@@ -5,7 +5,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
-module Frames.Streamly.Internal.Streaming where
+module Frames.Streamly.Streaming where
 
 type family FoldType (s :: (Type -> Type) -> Type -> Type) :: (Type -> Type) -> Type -> Type -> Type
 

@@ -105,7 +105,7 @@ module Frames.Streamly.CSV
 where
 
 import qualified Frames.Streamly.Internal.CSV as ICSV
-import Frames.Streamly.Internal.Streaming (StreamFunctions(..), StreamFunctionsIO(..), StreamFunctionsWithIO(..))
+import Frames.Streamly.Streaming (StreamFunctions(..), StreamFunctionsIO(..), StreamFunctionsWithIO(..))
 import qualified Frames.Streamly.ColumnTypeable as FSCT
 
 import Prelude hiding(getCompose)

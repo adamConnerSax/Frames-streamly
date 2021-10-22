@@ -45,15 +45,7 @@ import qualified Frames
 import qualified Frames.InCore                          as Frames
 import           Frames.InCore                           (VectorFor, VectorMFor, VectorMs, Vectors, RecVec(..), toAoS)
 
-import Frames.Streamly.Internal.Streaming (StreamFunctions(..), FoldType)
-
-#if MIN_VERSION_streamly(0,8,0)
-#else
-import qualified Streamly
-#endif
-import qualified Streamly.Prelude                       as Streamly
-import qualified Streamly.Data.Fold                     as Streamly.Fold
-import qualified Streamly.Internal.Data.Fold            as Streamly.Fold
+import Frames.Streamly.Streaming (StreamFunctions(..), FoldType)
 
 import qualified Control.Monad.Primitive                as Prim
 

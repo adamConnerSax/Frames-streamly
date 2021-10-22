@@ -12,7 +12,7 @@ module Frames.Streamly.Internal.Pipes
   , PipeStream
   ) where
 
-import Frames.Streamly.Internal.Streaming
+import Frames.Streamly.Streaming
 
 import Frames.Streamly.Internal.CSV (FramesCSVException(..))
 
@@ -22,15 +22,11 @@ import qualified System.IO as IO
 
 import qualified Control.Foldl as Foldl
 import           Control.Monad.Catch                     ( MonadThrow(..))
-import Control.Monad.IO.Class (MonadIO(..))
+--import Control.Monad.IO.Class (MonadIO(..))
 
 import qualified Data.Text as T
 
 newtype PipeStream m a = PipeStream { producer :: Pipes.Producer a m () }
-
-toPipeStream :: Pipes.Producer a m () -> PipeStream m a
-toPipeStream = PipeStream
-{-# INLINE toPipeStream #-}
 
 type instance FoldType PipeStream = Foldl.FoldM
 

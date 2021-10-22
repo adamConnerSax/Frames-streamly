@@ -33,10 +33,11 @@ library
       Frames.Streamly.CSV
       Frames.Streamly.InCore
       Frames.Streamly.OrMissing
+      Frames.Streamly.Streaming
       Frames.Streamly.Transform
       Frames.Streamly.TH
   other-modules: Frames.Streamly.Internal.CSV
-                 Frames.Streamly.Internal.Streaming
+                 Frames.Streamly.Internal.Streamly
                  Frames.Streamly.Internal.Pipes
   autogen-modules:
      Paths_Frames_streamly
