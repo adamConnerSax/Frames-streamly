@@ -1,8 +1,10 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -45,7 +47,7 @@ import qualified Frames
 import qualified Frames.InCore                          as Frames
 import           Frames.InCore                           (VectorFor, VectorMFor, VectorMs, Vectors, RecVec(..), toAoS)
 
-import Frames.Streamly.Streaming.Interface (StreamFunctions(..), FoldType)
+import Frames.Streamly.Streaming.Class (StreamFunctions(..)) --, FoldType)
 
 import qualified Control.Monad.Primitive                as Prim
 
@@ -54,10 +56,9 @@ import qualified Data.Vinyl                             as Vinyl
 
 -- | Fold a stream of 'Vinyl' records into SoA (Structure-of-Arrays) form.
 -- Here as a 'streamly' fold, so it may be deployed along with other folds or on only part of a stream.
-inCoreSoA_F :: forall m rs s. (Prim.PrimMonad m, Frames.RecVec rs)
-             => StreamFunctions s m
-             -> FoldType s m (Frames.Record rs) (Int, Vinyl.Rec (((->) Int) Frames.:. Frames.ElField) rs)
-inCoreSoA_F StreamFunctions{..} = sBuildFoldM feed initial fin where
+inCoreSoA_F :: forall rs s m. (Prim.PrimMonad m, Frames.RecVec rs, StreamFunctions s m)
+             => FoldType s m (Frames.Record rs) (Int, Vinyl.Rec (((->) Int) Frames.:. Frames.ElField) rs)
+inCoreSoA_F = sBuildFoldM @s feed initial fin where
   feed (!i, !sz, !mvs') row
     | i == sz = Frames.growRec (Proxy::Proxy rs) mvs'
                 >>= flip feed row . (i, sz*2,)
@@ -74,42 +75,38 @@ inCoreSoA_F StreamFunctions{..} = sBuildFoldM feed initial fin where
 {-# INLINE inCoreSoA_F #-}
 
 -- | Perform the 'inCoreSoA_F' fold on a stream of records.
-inCoreSoA :: forall m rs s. (Prim.PrimMonad m, Frames.RecVec rs)
-          => StreamFunctions s m
-          -> s m (Frames.Record rs)
+inCoreSoA :: forall rs s m. (Prim.PrimMonad m, Frames.RecVec rs, StreamFunctions s m)
+          => s m (Frames.Record rs)
           -> m (Int, Vinyl.Rec (((->) Int) Frames.:. Frames.ElField) rs)
-inCoreSoA sf@StreamFunctions{..} = sFold (inCoreSoA_F sf)
+inCoreSoA = sFold (inCoreSoA_F @rs @s)
 {-# INLINE inCoreSoA #-}
 
 -- | Fold a stream of 'Vinyl' records into AoS (Array-of-Structures) form.
-inCoreAoS_F :: forall m rs s. (Prim.PrimMonad m, Frames.RecVec rs)
-          => StreamFunctions s m -> FoldType s m (Frames.Record rs) (Frames.FrameRec rs)
-inCoreAoS_F sf@StreamFunctions{..} = sMapFold (return . uncurry Frames.toAoS) $ inCoreSoA_F sf
+inCoreAoS_F :: forall rs s m. (Prim.PrimMonad m, Frames.RecVec rs, StreamFunctions s m)
+          => FoldType s m (Frames.Record rs) (Frames.FrameRec rs)
+inCoreAoS_F = sMapFoldM @s (return . uncurry Frames.toAoS) $ inCoreSoA_F @rs @s
 {-# INLINE inCoreAoS_F #-}
 
 -- | Perform the 'inCoreAoS_F' fold on a stream of records.
-inCoreAoS :: forall m rs s. (Prim.PrimMonad m, Frames.RecVec rs)
-          => StreamFunctions s m
-          -> s m (Frames.Record rs)
+inCoreAoS :: forall m rs s. (Prim.PrimMonad m, Frames.RecVec rs, StreamFunctions s m)
+          => s m (Frames.Record rs)
           -> m (Frames.FrameRec rs)
-inCoreAoS sf@StreamFunctions{..} = sFold (inCoreAoS_F sf)
+inCoreAoS = sFold (inCoreAoS_F @rs @s)
 {-# INLINE inCoreAoS #-}
 
 
 -- | More general AoS fold, allowing for a, possible column changing, transformation of the records while in SoA form.
-inCoreAoS'_F ::  forall ss rs m s. (Prim.PrimMonad m, Frames.RecVec rs)
-             => StreamFunctions s m
-             -> (Frames.Rec ((->) Int Frames.:. Frames.ElField) rs -> Frames.Rec ((->) Int Frames.:. Frames.ElField) ss)
+inCoreAoS'_F ::  forall ss rs s m. (Prim.PrimMonad m, Frames.RecVec rs, StreamFunctions s m)
+             => (Frames.Rec ((->) Int Frames.:. Frames.ElField) rs -> Frames.Rec ((->) Int Frames.:. Frames.ElField) ss)
              -> FoldType s m (Frames.Record rs) (Frames.FrameRec ss)
-inCoreAoS'_F sf@StreamFunctions{..} f  = sMapFold (return . uncurry Frames.toAoS . aux) (inCoreSoA_F sf)
+inCoreAoS'_F f  = sMapFoldM @s (return . uncurry Frames.toAoS . aux) (inCoreSoA_F @rs @s)
   where aux (x,y) = (x, f y)
 {-# INLINE inCoreAoS'_F #-}
 
 -- | Perform the more general AoS fold on a stream of records.
-inCoreAoS' ::  forall ss rs m s. (Prim.PrimMonad m, Frames.RecVec rs)
-           => StreamFunctions s m
-           -> (Frames.Rec ((->) Int Frames.:. Frames.ElField) rs -> Frames.Rec ((->) Int Frames.:. Frames.ElField) ss)
+inCoreAoS' ::  forall ss rs s m. (Prim.PrimMonad m, Frames.RecVec rs,  StreamFunctions s m)
+           => (Frames.Rec ((->) Int Frames.:. Frames.ElField) rs -> Frames.Rec ((->) Int Frames.:. Frames.ElField) ss)
            -> s m (Frames.Record rs)
            -> m (Frames.FrameRec ss)
-inCoreAoS' sf@StreamFunctions{..} f = sFold (inCoreAoS'_F sf f)
+inCoreAoS' f = sFold (inCoreAoS'_F @ss @rs @s f)
 {-# INLINE inCoreAoS' #-}

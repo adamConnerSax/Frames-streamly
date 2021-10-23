@@ -12,7 +12,7 @@ module Frames.Streamly.Streaming.Pipes
   , PipeStream
   ) where
 
-import Frames.Streamly.Streaming.Interface
+import Frames.Streamly.Streaming.Class
 
 import Frames.Streamly.Internal.CSV (FramesCSVException(..))
 
@@ -29,27 +29,46 @@ import qualified Data.Text as T
 
 newtype PipeStream m a = PipeStream { producer :: Pipes.Producer a m () }
 
-type instance FoldType PipeStream = Foldl.FoldM
+instance StreamFunctions PipeStream m where
+  type FoldType StreamFunctions = Foldl.FoldM
+  sThrowIfEmpty = Pipes.pipesThrowIfEmpty . producer
+  {-# INLINEABLE sThrowIfEmpty #-}
+  sCons a s = PipeStream $ Pipes.yield a >> producer s
+  {-# INLINEABLE sCons #-}
+  sUncons = pipeStreamUncons
+  {-# INLINEABLE sUncons #-}
+  sHead = Pipes.head . producer
+  {-# INLINEABLE sHead #-}
+  sMap f s = PipeStream $ producer s >-> Pipes.map f
+  {-# INLINEABLE sMap #-}
+  sMapMaybe f s = PipeStream $  producer s >-> Pipes.mapMaybe f
+  {-# INLINEABLE sMapMaybe #-}
+  sScanM step start s = PipeStream $ producer s >-> Pipes.scanM step start return
+  {-# INLINEABLE sScanM #-}
+  sDrop n s = PipeStream $ producer s >-> Pipes.drop n
+  {-# INLINEABLE sDrop #-}
+  sTake n s = PipeStream $ producer s >-> Pipes.take n
+  {-# INLINEABLE sTake #-}
+  sFolder step start = pipesFolder step start . producer
+  {-# INLINEABLE sFolder #-}
+  sBuildFold = pipesBuildFold
+  {-# INLINEABLE sBuildFold #-}
+  sBuildFoldM = pipesBuildFoldM
+  {-# INLINEABLE sBuildFoldM #-}
+  sMapFoldM = pipesPostMapM
+  {-# INLINEABLE sMapFoldM #-}
+  sFold fld  = Foldl.impurely Pipes.foldM fld . producer
+  {-# INLINEABLE sFold #-}
+  sToList = Pipes.toListM . producer -- this might be bad (not lazy) compared to streamly
+  {-# INLINEABLE sToList #-}
+  sFromFoldable = PipeStream . pipesFromFoldable
+  {-# INLINEABLE sFromFoldable #-}
 
-pipesFunctions :: (MonadThrow m, Monad m) => StreamFunctions PipeStream m
-pipesFunctions = StreamFunctions
-  (pipesThrowIfEmpty . producer)
-  (\a s -> PipeStream $ Pipes.yield a >> producer s)
-  pipeStreamUncons
-  (Pipes.head . producer)
-  (\f s -> PipeStream $ producer s >-> Pipes.map f)
-  (\f s -> PipeStream $  producer s >-> Pipes.mapMaybe f)
-  (\step start s -> PipeStream $ producer s >-> Pipes.scanM step start return)
-  (\n s -> PipeStream $ producer s >-> Pipes.drop n)
-  (\n s -> PipeStream $ producer s >-> Pipes.take n)
-  (\step start -> pipesFolder step start . producer)
-  pipesBuildFold
-  pipesBuildFoldM
-  pipesPostMapM
-  (\fld s -> Foldl.impurely Pipes.foldM fld $ producer s)
-  (Pipes.toListM . producer) -- this might be bad (not lazy) compared to streamly.
-  (PipeStream . pipesFromFoldable)
-{-# INLINEABLE pipesFunctions #-}
+instance StreamFunctionsIO PipeStream m where
+  sReadTextLines = pipesReadTextLines
+  {-# INLINEABLE sReadTextLines #-}
+  sWriteTextLines = pipesWriteTextLines
+  {-# INLINEABLE sWriteTextLines #-}
 
 pipesPostMapM :: Monad m => (b -> m c) -> Foldl.FoldM m a b -> Foldl.FoldM m a c
 pipesPostMapM f (Foldl.FoldM step begin done) = Foldl.FoldM step begin done'
@@ -108,3 +127,26 @@ pipeStreamUncons p = do
     Left () -> return Nothing
     Right (a, s) -> return $ Just (a, PipeStream s)
 {-# INLINABLE pipeStreamUncons #-}
+
+
+{-
+pipesFunctions :: (MonadThrow m, Monad m) => StreamFunctions PipeStream m
+pipesFunctions = StreamFunctions
+  (pipesThrowIfEmpty . producer)
+  (\a s -> PipeStream $ Pipes.yield a >> producer s)
+  pipeStreamUncons
+  (Pipes.head . producer)
+  (\f s -> PipeStream $ producer s >-> Pipes.map f)
+  (\f s -> PipeStream $  producer s >-> Pipes.mapMaybe f)
+  (\step start s -> PipeStream $ producer s >-> Pipes.scanM step start return)
+  (\n s -> PipeStream $ producer s >-> Pipes.drop n)
+  (\n s -> PipeStream $ producer s >-> Pipes.take n)
+  (\step start -> pipesFolder step start . producer)
+  pipesBuildFold
+  pipesBuildFoldM
+  pipesPostMapM
+  (\fld s -> Foldl.impurely Pipes.foldM fld $ producer s)
+  (Pipes.toListM . producer) -- this might be bad (not lazy) compared to streamly.
+  (PipeStream . pipesFromFoldable)
+{-# INLINEABLE pipesFunctions #-}
+-}

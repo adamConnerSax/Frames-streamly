@@ -1,6 +1,8 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -15,7 +17,7 @@ module Frames.Streamly.Streaming.Streamly
   )
 where
 
-import Frames.Streamly.Streaming.Interface
+import Frames.Streamly.Streaming.Class
 
 import Frames.Streamly.Internal.CSV (FramesCSVException(..))
 import           Control.Monad.Catch                     ( MonadThrow(..), MonadCatch)
@@ -40,35 +42,56 @@ import qualified Streamly.Data.Unicode.Stream           as Streamly.Unicode
 import qualified Streamly.Internal.Data.Fold as Streamly.Fold
 #endif
 
-type instance FoldType SerialT = Streamly.Fold.Fold
+newtype StreamlyStream m a = StreamlyStream { stream :: Streamly.SerialT m a }
 
-streamlyFunctions :: MonadThrow m => StreamFunctions Streamly.SerialT m
-streamlyFunctions = StreamFunctions
-  streamlyThrowIfEmpty
-  Streamly.cons
-  Streamly.uncons
-  Streamly.head
-  Streamly.map
-  Streamly.mapMaybe
-  Streamly.scanlM'
-  Streamly.drop
-  Streamly.take
-  streamlyFolder
-  streamlyBuildFold
-  streamlyBuildFoldM
-  Streamly.Fold.rmapM
-  Streamly.fold
-  Streamly.toList
-  Streamly.fromFoldable
-{-# INLINABLE streamlyFunctions #-}
+instance IsStream t => StreamFunctions (StreamlyStream t) m where
+  type FoldType (StreamlyStream t) = Streamly.Fold.Fold
+  sThrowIfEmpty = streamlyThrowIfEmpty . stream
+  {-# INLINEABLE sThrowIfEmpty #-}
+  sCons a = StreamlyStream . streamly.cons a . stream
+  {-# INLINEABLE sCons #-}
+  sUncons = streamlyStreamuncons
+  {-# INLINEABLE sUncons #-}
+  sHead = Streamly.head . stream
+  {-# INLINEABLE sHead #-}
+  sMap f = StreamlyStream . Streamly.map f . stream
+  {-# INLINEABLE sMap #-}
+  sMapMaybe f s = StreamlyStream . Streamly.mapMaybe f . stream
+  {-# INLINEABLE sMapMaybe #-}
+  sScanM step start = StreamlyStream . Streamly.scanlM' step start . stream s
+  {-# INLINEABLE sScanM #-}
+  sDrop n = StreamlyStream . Streamly.drop n . stream
+  {-# INLINEABLE sDrop #-}
+  sTake n = StreamlyStream . Streamly.take n . stream
+  {-# INLINEABLE sTake #-}
+  sFolder step start = streamlyFolder step start . stream
+  {-# INLINEABLE sFolder #-}
+  sBuildFold = streamlyBuildFold
+  {-# INLINEABLE sBuildFold #-}
+  sBuildFoldM = streamlyBuildFoldM
+  {-# INLINEABLE sBuildFoldM #-}
+  sMapFoldM = Streamly.Fold.rmapM
+  {-# INLINEABLE sMapFoldM #-}
+  sFold fld  = Streamly.fold . stream
+  {-# INLINEABLE sFold #-}
+  sToList = Streamly.toList . stream -- this might be bad (not lazy) compared to streamly
+  {-# INLINEABLE sToList #-}
+  sFromFoldable = StreamlyStream . Streamly.fromFoldable
+  {-# INLINEABLE sFromFoldable #-}
 
-streamlyFunctionsIO :: (Streamly.MonadAsync m, MonadCatch m)  => StreamFunctionsIO Streamly.SerialT m
-streamlyFunctionsIO = StreamFunctionsIO streamlyReadTextLines streamlyWriteTextLines
-{-# INLINABLE streamlyFunctionsIO #-}
+instance (IsStream t, MonadIO m) => StreamFunctionsIO (StreamlyStream t)  m where
+  sReadTextLines = StreamlyStream . streamlyReadTextLines
+  {-# INLINEABLE sReadTextLines #-}
+  sWriteTextLines = streamlyWriteTextLines . stream
+  {-# INLINEABLE sWriteTextLines #-}
 
-streamlyFunctionsWithIO :: (Streamly.MonadAsync m, MonadCatch m)  => StreamFunctionsWithIO Streamly.SerialT m
-streamlyFunctionsWithIO = StreamFunctionsWithIO streamlyFunctions streamlyFunctionsIO
-{-# INLINABLE streamlyFunctionsWithIO #-}
+streamlyStreamUncons :: (IsStream t, Monad m) => StreamlyStream t m a -> m (Maybe (a, StreamlyStream t m a))
+streamlyStreamUncons s = do
+  sUncons <- Streamly.uncons (stream s)
+  case sUncons of
+    Nothing -> return Nothing
+    Just (a, s) -> return $ Just (a, StreamlyStream s)
+{-# INLINABLE streamlyStreamUncons #-}
 
 
 streamlyBuildFold :: Monad m => (x -> a -> x) -> x -> (x -> b) -> Streamly.Fold.Fold m a b
@@ -129,4 +152,36 @@ word8ToTextLines :: (IsStream t, MonadIO m) => t m Word8 -> t m T.Text
 word8ToTextLines =  Streamly.splitOnSuffix(=='\n') (toText <$> Streamly.Fold.toList)
                     . Streamly.Unicode.decodeUtf8
 {-# INLINE word8ToTextLines #-}
+-}
+
+
+
+{-
+streamlyFunctions :: MonadThrow m => StreamFunctions Streamly.SerialT m
+streamlyFunctions = StreamFunctions
+  streamlyThrowIfEmpty
+  Streamly.cons
+  Streamly.uncons
+  Streamly.head
+  Streamly.map
+  Streamly.mapMaybe
+  Streamly.scanlM'
+  Streamly.drop
+  Streamly.take
+  streamlyFolder
+  streamlyBuildFold
+  streamlyBuildFoldM
+  Streamly.Fold.rmapM
+  Streamly.fold
+  Streamly.toList
+  Streamly.fromFoldable
+{-# INLINABLE streamlyFunctions #-}
+
+streamlyFunctionsIO :: (Streamly.MonadAsync m, MonadCatch m)  => StreamFunctionsIO Streamly.SerialT m
+streamlyFunctionsIO = StreamFunctionsIO streamlyReadTextLines streamlyWriteTextLines
+{-# INLINABLE streamlyFunctionsIO #-}
+
+streamlyFunctionsWithIO :: (Streamly.MonadAsync m, MonadCatch m)  => StreamFunctionsWithIO Streamly.SerialT m
+streamlyFunctionsWithIO = StreamFunctionsWithIO streamlyFunctions streamlyFunctionsIO
+{-# INLINABLE streamlyFunctionsWithIO #-}
 -}

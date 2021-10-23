@@ -37,7 +37,7 @@ library
       Frames.Streamly.CSV
       Frames.Streamly.InCore
       Frames.Streamly.OrMissing
-      Frames.Streamly.Streaming.Interface
+      Frames.Streamly.Streaming.Class
       Frames.Streamly.Streaming.Streamly
       Frames.Streamly.Streaming.Pipes
       Frames.Streamly.Transform
