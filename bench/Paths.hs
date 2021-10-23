@@ -11,6 +11,9 @@ import qualified Frames.Streamly.TH as FStreamly
 import qualified Frames
 import qualified Frames.TH as Frames
 
+forestFiresPrefix :: FilePath
+forestFiresPrefix = "forestFires"
+
 forestFiresPath :: FilePath
 forestFiresPath = "forestFires.csv"
 
