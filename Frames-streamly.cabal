@@ -135,12 +135,14 @@ benchmark bench-frames-streamly
   main-is:             Bench.hs
   build-depends:       base
                      , containers
+                     , criterion
                      , foldl
                      , Frames
                      , Frames-streamly
+                     , pipes
                      , relude
                      , text
-                     , criterion
+                     , vinyl
   mixins:  base hiding (Prelude)
          , relude (Relude as Prelude
          , Relude.Extra)

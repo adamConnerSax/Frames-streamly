@@ -38,7 +38,7 @@ pipesFunctions = StreamFunctions
   pipeStreamUncons
   (Pipes.head . producer)
   (\f s -> PipeStream $ producer s >-> Pipes.map f)
-  (\f s -> PipeStream $  producer s >-> Pipes.wither (return . f))
+  (\f s -> PipeStream $  producer s >-> Pipes.mapMaybe f)
   (\step start s -> PipeStream $ producer s >-> Pipes.scanM step start return)
   (\n s -> PipeStream $ producer s >-> Pipes.drop n)
   (\n s -> PipeStream $ producer s >-> Pipes.take n)
