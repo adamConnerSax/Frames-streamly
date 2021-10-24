@@ -44,7 +44,7 @@ class StreamFunctions (s :: (Type -> Type) -> Type -> Type) (m :: Type -> Type) 
   sFromFoldable :: forall f a.Foldable f => f a -> s m a
   -- ^ build a stream of @a@ from a foldable of @a@
 
-class StreamFunctionsIO (s :: (Type -> Type) -> Type -> Type) (m :: Type -> Type) where
+class StreamFunctions s m => StreamFunctionsIO (s :: (Type -> Type) -> Type -> Type) (m :: Type -> Type) where
   sReadTextLines :: FilePath -> s m Text
   -- ^ create a stream of lines of text by reading the given file
   sWriteTextLines :: FilePath -> s m Text -> m ()
