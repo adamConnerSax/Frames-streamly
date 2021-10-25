@@ -11,6 +11,9 @@
 module Frames.Streamly.Streaming.Streamly
   (
     StreamlyStream(..)
+    -- * re-exports
+  , SerialT
+  , IsStream
   )
 where
 
@@ -84,8 +87,8 @@ instance (IsStream t, Streamly.MonadAsync m, MonadCatch m) => StreamFunctionsIO 
 
 streamlyStreamUncons :: (IsStream t, Monad m) => StreamlyStream t m a -> m (Maybe (a, StreamlyStream t m a))
 streamlyStreamUncons s = do
-  sUncons <- Streamly.uncons (Streamly.adapt $ stream s)
-  case sUncons of
+  unc <- Streamly.uncons (Streamly.adapt $ stream s)
+  case unc of
     Nothing -> return Nothing
     Just (a, s) -> return $ Just (a, StreamlyStream s)
 {-# INLINABLE streamlyStreamUncons #-}

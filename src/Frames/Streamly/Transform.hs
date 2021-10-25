@@ -36,7 +36,7 @@ module Frames.Streamly.Transform
 where
 
 import qualified Frames.Streamly.InCore as FS
-import Frames.Streamly.Streaming.Class (StreamFunctions(..))
+--import Frames.Streamly.Streaming.Class (StreamFunctions(..))
 import Frames.Streamly.Streaming.Streamly (StreamlyStream(..))
 import Prelude hiding (filter, mapMaybe)
 

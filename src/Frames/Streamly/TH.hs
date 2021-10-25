@@ -28,8 +28,6 @@ module Frames.Streamly.TH
   , defaultSep
   , defaultIsMissing
   , DefaultStream
-  , defaultStreamFunctions
-  , defaultStreamFunctionsWithIO
   , OrMissingWhen(..)
   , setOrMissingWhen
   , rowGen
@@ -61,7 +59,7 @@ where
 
 import Prelude hiding (lift)
 
-import Frames.Streamly.Streaming.Streamly (StreamlyStream(..))
+import Frames.Streamly.Streaming.Streamly (StreamlyStream(..), SerialT)
 import Frames.Streamly.Streaming.Pipes (PipeStream(..))
 import Frames.Streamly.Streaming.Class
 import qualified Frames.Streamly.CSV as SCSV
@@ -88,9 +86,10 @@ import Language.Haskell.TH hiding (Type)
 import qualified Language.Haskell.TH as TH (Type)
 import Language.Haskell.TH.Syntax hiding (Type)
 
-{-
-type DefaultStream = SerialT
 
+type DefaultStream = StreamlyStream SerialT
+
+{-
 defaultStreamFunctions :: StreamFunctions DefaultStream IO
 defaultStreamFunctions  = streamlyFunctions
 {-# INLINE defaultStreamFunctions #-}
@@ -266,8 +265,9 @@ defaultIsMissing t = T.null t || t == "NA"
 -- get column names from the data file, use the default column
 -- separator (a comma), infer column types from the default 'Columns'
 -- set of types, and produce a row type with name @Row@.
-rowGen :: FilePath -> RowGen DefaultStream 'ColumnByName FSCU.CommonColumns
-rowGen fp = RowGen
+-- Polymorphic in the stream type
+rowGen' :: forall s. StreamFunctionsIO s IO => FilePath -> RowGen s 'ColumnByName FSCU.CommonColumns
+rowGen' fp = RowGen
   allColumnsAsNamed \
   ""
   SCSV.defaultSep
@@ -275,14 +275,33 @@ rowGen fp = RowGen
   FSCU.parseableParseHowRec
   1000
   defaultIsMissing
-  defaultStreamFunctions
-  (SCSV.streamTokenized' defaultStreamFunctionsWithIO fp SCSV.defaultSep)
+  (SCSV.streamTokenized' @s fp SCSV.defaultSep)
+{-# INLINEABLE rowGen' #-}
+
+-- | A default 'RowGen'. This instructs the type inference engine to
+-- get column names from the data file, use the default column
+-- separator (a comma), infer column types from the default 'Columns'
+-- set of types, and produce a row type with name @Row@.
+-- Default stream type.
+rowGen :: FilePath -> RowGen DefaultStream 'ColumnByName FSCU.CommonColumns
+rowGen = rowGen' @DefaultStream
+{-RowGen
+  allColumnsAsNamed \
+  ""
+  SCSV.defaultSep
+  "Row"
+  FSCU.parseableParseHowRec
+  1000
+  defaultIsMissing
+  (SCSV.streamTokenized' @DefaultStream fp SCSV.defaultSep)
+-}
 {-# INLINEABLE rowGen #-}
 
--- | Like 'rowGen', but will also generate custom data types for
+
+-- | Like 'rowGen\'', but will also generate custom data types for
 -- 'Categorical' variables with up to 8 distinct variants.
-rowGenCat :: FilePath -> RowGen DefaultStream 'ColumnByName FSCU.CommonColumnsCat
-rowGenCat fp = RowGen
+rowGenCat' :: forall s. StreamFunctionsIO s IO => FilePath -> RowGen s 'ColumnByName FSCU.CommonColumnsCat
+rowGenCat' fp = RowGen
   allColumnsAsNamed
   ""
   SCSV.defaultSep
@@ -290,8 +309,13 @@ rowGenCat fp = RowGen
   FSCU.parseableParseHowRec
   1000
   defaultIsMissing
-  defaultStreamFunctions
-  (SCSV.streamTokenized' defaultStreamFunctionsWithIO fp SCSV.defaultSep)
+  (SCSV.streamTokenized' @s fp SCSV.defaultSep)
+{-# INLINEABLE rowGenCat' #-}
+
+-- | Like 'rowGen', but will also generate custom data types for
+-- 'Categorical' variables with up to 8 distinct variants.
+rowGenCat :: FilePath -> RowGen DefaultStream 'ColumnByName FSCU.CommonColumnsCat
+rowGenCat = rowGenCat' @DefaultStream
 {-# INLINEABLE rowGenCat #-}
 
 -- | Update or replace the columnHandler in a RowGen
@@ -459,15 +483,15 @@ tableTypes n fp = tableTypes' (rowGen fp) { rowTypeName = n }
 --         lineSource = lineReader separator >-> P.take prefixSize
 
 -- | Tokenize the first line of a ’Streamly.SerialT’.
-colNamesP :: Monad m => StreamFunctions s m -> s m [Text] -> m [T.Text]
-colNamesP StreamFunctions{..} src = fromMaybe [] <$> sHead src
+colNamesP :: (Monad m, StreamFunctions s m) => s m [Text] -> m [T.Text]
+colNamesP src = fromMaybe [] <$> sHead src
 
 -- | Generate a type for a row of a table all of whose columns remain
 -- unparsed 'Text' values.
-tableTypesText' :: ()
+tableTypesText' :: StreamFunctions s IO
                 => RowGen s b a -> DecsQ
 tableTypesText' RowGen {..} = do
-  firstRow <- runIO $ colNamesP streamFunctions lineReader
+  firstRow <- runIO $ colNamesP lineReader
   let (allColStates, pch) = case genColumnSelector of
         ICSV.GenUsingHeader f _ ->
           let allHeaders = ICSV.HeaderText <$> firstRow
@@ -510,10 +534,11 @@ tableTypesText' RowGen {..} = do
 -- rlens \@Foo@, and @foo' = rlens' \@Foo@.
 tableTypes' :: forall ts b s.
                (FSCT.ColumnTypeable (FSCU.ColType ts)
-               , Show (ICSV.ColumnIdType b))
+               , Show (ICSV.ColumnIdType b)
+               , StreamFunctions s IO)
             => RowGen s b ts -> DecsQ
 tableTypes' (RowGen {..}) = do
-  (typedCols, pch) <- runIO $ SCSV.readColHeaders streamFunctions columnParsers genColumnSelector lineSource :: Q ([SCSV.ColTypeInfo (FSCU.ColType ts)], ICSV.ParseColumnSelector)
+  (typedCols, pch) <- runIO $ SCSV.readColHeaders columnParsers genColumnSelector lineSource :: Q ([SCSV.ColTypeInfo (FSCU.ColType ts)], ICSV.ParseColumnSelector)
 --  let colDecsFromTypedCols :: (ICSV.ColTypeName, FSCU.ColType ts)
 --      colDecsFromTypedCols
   (colTypes, colDecs) <- (second concat . unzip)
@@ -527,7 +552,7 @@ tableTypes' (RowGen {..}) = do
   optsDec <- valD (varP optsName) (normalB $ lift opts) []
   return (recTy : optsTy : optsDec : colDecs)
   where lineSource :: s IO [Text]
-        lineSource = sTake streamFunctions inferencePrefix $ lineReader
+        lineSource = sTake inferencePrefix $ lineReader
         inferMaybe :: ICSV.OrMissingWhen -> FSCU.SomeMissing -> Bool
         inferMaybe mw sm = case mw of
           ICSV.NeverMissing -> False
