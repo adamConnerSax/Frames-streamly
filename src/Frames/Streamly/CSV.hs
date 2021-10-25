@@ -155,7 +155,7 @@ defaultParser = ParserOptions (ICSV.ParseAll True) (Frames.columnSeparator x) (F
 {-# INLINE defaultParser #-}
 
 -- | Write a stream of Text to file at FilePath
-writeLines :: StreamFunctionsIO s m => FilePath -> s m Text -> m ()
+writeLines :: StreamFunctionsIO s m => FilePath -> s (IOSafe s m) Text -> m ()
 writeLines = sWriteTextLines
 
 -- | Given a stream of @Records@, for which all fields satisfy the `ShowCSV` constraint,
@@ -315,7 +315,7 @@ writeStreamSV
    )
   => T.Text -- ^ column separator
   -> FilePath -- ^ path
-  -> s m (Frames.Record rs) -- ^ stream of Records
+  -> s (IOSafe s m) (Frames.Record rs) -- ^ stream of Records
   -> m ()
 writeStreamSV sep fp = sWriteTextLines fp . streamToSV sep
 {-# INLINEABLE writeStreamSV #-}
@@ -366,7 +366,7 @@ writeStreamSV_Show
    )
   => T.Text -- ^ column separator
   -> FilePath -- ^ file path
-  -> s m (Frames.Record rs) -- ^ stream of Records
+  -> s (IOSafe s m) (Frames.Record rs) -- ^ stream of Records
   -> m ()
 writeStreamSV_Show sep fp = sWriteTextLines fp . streamSVClass @Show (T.pack . show) sep
 {-# INLINEABLE writeStreamSV_Show #-}
@@ -417,8 +417,8 @@ readTableMaybe
     , StreamFunctionsIO s m
     )
     => FilePath -- ^ file path
-    -> s m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Maybe :. ElField@ records after parsing.
-readTableMaybe = readTableMaybeOpt defaultParser
+    -> s (IOSafe s m) (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Maybe :. ElField@ records after parsing.
+readTableMaybe = readTableMaybeOpt @_ @s @m defaultParser
 {-# INLINEABLE readTableMaybe #-}
 
 -- | Stream a table from a file path.
@@ -433,8 +433,8 @@ readTableMaybeOpt
     )
     => ParserOptions -- ^ parsing options
     -> FilePath -- ^ file path
-    -> s m (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Maybe :. ElField@ records after parsing.
-readTableMaybeOpt opts = sMap recEitherToMaybe . readTableEitherOpt opts
+    -> s (IOSafe s m) (Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Maybe :. ElField@ records after parsing.
+readTableMaybeOpt opts = sMap recEitherToMaybe . readTableEitherOpt @_ @s @m opts
 {-# INLINEABLE readTableMaybeOpt #-}
 
 -- | Stream a table from a file path.
@@ -450,8 +450,8 @@ readTableEither
      , StreamFunctionsIO s m
      )
   => FilePath -- ^ file path
-  -> s m (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Either :. ElField@ records after parsing.
-readTableEither = readTableEitherOpt defaultParser
+  -> s (IOSafe s m) (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Either :. ElField@ records after parsing.
+readTableEither = readTableEitherOpt @rs @s @m defaultParser
 {-# INLINEABLE readTableEither #-}
 
 -- | Stream a table from a file path.
@@ -462,13 +462,12 @@ readTableEitherOpt
   :: forall rs s m.
      ( Vinyl.RMap rs
      , StrictReadRec rs
-     , MonadThrow m
      , StreamFunctionsIO s m
      )
   => ParserOptions -- ^ parsing options
   -> FilePath -- ^ file path
-  -> s m (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Either :. ElField@ records after parsing.
-readTableEitherOpt opts = streamTableEitherOpt opts . sReadTextLines
+  -> s (IOSafe s m) (Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs) -- ^ stream of @Either :. ElField@ records after parsing.
+readTableEitherOpt opts = streamTableEitherOpt @rs @s @(IOSafe s m) opts . sReadTextLines @s @m
 {-# INLINEABLE readTableEitherOpt #-}
 
 -- | Stream Table from a file path, dropping rows where any field fails to parse
@@ -478,12 +477,11 @@ readTable
   :: forall rs s m.
      ( Vinyl.RMap rs
      , StrictReadRec rs
-     , MonadThrow m
      , StreamFunctionsIO s m
      )
   => FilePath -- ^ file path
-  -> s m (Frames.Record rs) -- ^ stream of Records
-readTable = readTableOpt defaultParser
+  -> s (IOSafe s m) (Frames.Record rs) -- ^ stream of Records
+readTable = readTableOpt @rs @s @m defaultParser
 {-# INLINEABLE readTable #-}
 
 -- | Stream Table from a file path, dropping rows where any field fails to parse
@@ -492,13 +490,12 @@ readTableOpt
   :: forall rs s m.
      ( Vinyl.RMap rs
      , StrictReadRec rs
-     , MonadThrow m
      , StreamFunctionsIO s m
      )
   => ParserOptions  -- ^ parsing options
   -> FilePath -- ^ file path
-  -> s m (Frames.Record rs)  -- ^ stream of Records
-readTableOpt !opts !fp = streamTableOpt opts $! sReadTextLines fp
+  -> s (IOSafe s m) (Frames.Record rs)  -- ^ stream of Records
+readTableOpt !opts !fp = streamTableOpt @rs @s @(IOSafe s m) opts $! sReadTextLines @s @m fp
 {-# INLINEABLE readTableOpt #-}
 
 -- | Convert a stream of lines of `Text` to a table
@@ -834,22 +831,22 @@ streamTextLines = word8ToTextLines2 . streamWord8
 {-# INLINE streamTextLines #-}
 -}
 
-streamTokenized' :: StreamFunctionsIO s m => FilePath -> Frames.Separator -> s m [Text]
-streamTokenized' fp sep =  sMap (fmap T.copy . Frames.tokenizeRow popts) $ sReadTextLines fp where
+streamTokenized' :: forall s m.StreamFunctionsIO s m => FilePath -> Frames.Separator -> s (IOSafe s m) [Text]
+streamTokenized' fp sep =  sMap (fmap T.copy . Frames.tokenizeRow popts) $ sReadTextLines @s @m fp where
   popts = Frames.defaultParser { Frames.columnSeparator = sep }
 {-# INLINE streamTokenized' #-}
 
-streamTokenized :: StreamFunctionsIO s m => FilePath -> s m [Text]
-streamTokenized =  sMap (fmap T.copy . Frames.tokenizeRow Frames.defaultParser) . sReadTextLines
+streamTokenized :: forall s m.StreamFunctionsIO s m => FilePath -> s (IOSafe s m) [Text]
+streamTokenized =  sMap (fmap T.copy . Frames.tokenizeRow Frames.defaultParser) . sReadTextLines @s @m
 {-# INLINE streamTokenized #-}
 
-streamParsed :: (V.RMap rs, StrictReadRec rs, StreamFunctionsIO s m)
+streamParsed :: forall rs s m.(V.RMap rs, StrictReadRec rs, StreamFunctionsIO s m)
              => FilePath
-             -> s m (V.Rec (Strict.Either Text V.:. V.ElField) rs)
-streamParsed = sMap (strictReadRec . Frames.tokenizeRow Frames.defaultParser) . sReadTextLines
+             -> s (IOSafe s m) (V.Rec (Strict.Either Text V.:. V.ElField) rs)
+streamParsed = sMap (strictReadRec . Frames.tokenizeRow Frames.defaultParser) . sReadTextLines @s @m
 {-# INLINE streamParsed #-}
 
-streamParsedMaybe :: (V.RMap rs, StrictReadRec rs, StreamFunctionsIO s m)
-                  => FilePath -> s m (V.Rec (Maybe V.:. V.ElField) rs)
-streamParsedMaybe =  sMap (recStrictEitherToMaybe . strictReadRec . Frames.tokenizeRow Frames.defaultParser) . sReadTextLines
+streamParsedMaybe :: forall rs s m.(V.RMap rs, StrictReadRec rs, StreamFunctionsIO s m)
+                  => FilePath -> s (IOSafe s m) (V.Rec (Maybe V.:. V.ElField) rs)
+streamParsedMaybe =  sMap (recStrictEitherToMaybe . strictReadRec . Frames.tokenizeRow Frames.defaultParser) . sReadTextLines @s @m
 {-# INLINE streamParsedMaybe #-}

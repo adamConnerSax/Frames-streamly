@@ -21,7 +21,7 @@ import Frames.Streamly.Streaming.Class
 
 import Frames.Streamly.Internal.CSV (FramesCSVException(..))
 import           Control.Monad.Catch                     ( MonadThrow(..), MonadCatch)
-
+import Control.Foldl (PrimMonad)
 import qualified Data.Text as T
 import qualified Streamly.Prelude                       as Streamly
 import qualified Streamly.Data.Fold                     as Streamly.Fold
@@ -79,7 +79,10 @@ instance (IsStream t, Monad m) => StreamFunctions (StreamlyStream t) m where
   sFromFoldable = StreamlyStream . Streamly.fromFoldable
   {-# INLINEABLE sFromFoldable #-}
 
-instance (IsStream t, Streamly.MonadAsync m, MonadCatch m) => StreamFunctionsIO (StreamlyStream t)  m where
+instance (IsStream t, Streamly.MonadAsync m, MonadCatch m, PrimMonad m) => StreamFunctionsIO (StreamlyStream t) m where
+  type IOSafe (StreamlyStream t) m = m
+  runSafe = id
+  {-# INLINE runSafe #-}
   sReadTextLines = StreamlyStream . streamlyReadTextLines
   {-# INLINEABLE sReadTextLines #-}
   sWriteTextLines fp = streamlyWriteTextLines fp . stream
@@ -90,7 +93,7 @@ streamlyStreamUncons s = do
   unc <- Streamly.uncons (Streamly.adapt $ stream s)
   case unc of
     Nothing -> return Nothing
-    Just (a, s) -> return $ Just (a, StreamlyStream s)
+    Just (a, s') -> return $ Just (a, StreamlyStream s')
 {-# INLINABLE streamlyStreamUncons #-}
 
 

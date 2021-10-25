@@ -10,7 +10,7 @@
 module Frames.Streamly.Streaming.Class where
 
 import           Control.Monad.Catch                     ( MonadThrow(..))
-
+import Control.Foldl (PrimMonad)
 class Monad m => StreamFunctions (s :: (Type -> Type) -> Type -> Type) (m :: Type -> Type) where
   type FoldType s ::  (Type -> Type) -> Type -> Type -> Type
   sThrowIfEmpty :: forall x. MonadThrow m => s m x -> m ()
@@ -46,10 +46,12 @@ class Monad m => StreamFunctions (s :: (Type -> Type) -> Type -> Type) (m :: Typ
   sFromFoldable :: forall f a.Foldable f => f a -> s m a
   -- ^ build a stream of @a@ from a foldable of @a@
 
-class StreamFunctions s m => StreamFunctionsIO (s :: (Type -> Type) -> Type -> Type) (m :: Type -> Type) where
-  sReadTextLines :: FilePath -> s m Text
+class (StreamFunctions s (IOSafe s m), MonadThrow (IOSafe s m), PrimMonad (IOSafe s m)) => StreamFunctionsIO (s :: (Type -> Type) -> Type -> Type) m where
+  type IOSafe s m :: Type -> Type
+  runSafe :: forall a.IOSafe s m a ->  m a
+  sReadTextLines :: FilePath -> s (IOSafe s m) Text
   -- ^ create a stream of lines of text by reading the given file
-  sWriteTextLines :: FilePath -> s m Text -> m ()
+  sWriteTextLines :: FilePath -> s (IOSafe s m) Text -> m ()
     -- ^ streamly version handles invalid characters
 
 

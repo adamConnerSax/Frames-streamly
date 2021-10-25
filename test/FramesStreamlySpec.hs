@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE QuantifiedConstraints #-}
@@ -13,11 +14,12 @@ import qualified DemoPaths as Paths
 import qualified Frames.Streamly.CSV as FStreamly
 import qualified Frames.Streamly.TH as FStreamly
 import qualified Frames.Streamly.InCore as FStreamly
-import qualified Frames.Streamly.Streaming.Interface as Streaming
+import qualified Frames.Streamly.Streaming.Class as Streaming
 import qualified Frames.Streamly.Streaming.Pipes as Streaming
 import qualified Frames.Streamly.Streaming.Streamly as Streaming
 import qualified Frames
 import qualified Control.Foldl as Foldl
+import Pipes.Safe()
 
 numRecs :: Foldable f => f a -> Int
 numRecs = Foldl.fold Foldl.length
@@ -51,21 +53,20 @@ wrongNumberColumnsSelector _ = False
 
 spec :: Spec
 spec = do
-  let specF :: String -> Streaming.StreamFunctionsWithIO s IO -> Spec
-      specF desc sfWIO = do
-        let sf = Streaming.streamFunctions sfWIO
+  let specF :: forall s.(Foldl.PrimMonad (Streaming.IOSafe s IO), Streaming.StreamFunctionsIO s IO) => String -> Spec
+      specF desc = do
         forestFiresPath <- runIO $ Paths.usePath Paths.forestFiresPath
         forestFiresNoHeaderPath <- runIO $ Paths.usePath Paths.forestFiresNoHeaderPath
         forestFiresFewerColsPath <- runIO $ Paths.usePath Paths.forestFiresFewerColsPath
 
-        forestFires :: Frames.Frame ForestFires <- runIO $ FStreamly.inCoreAoS sf  $ FStreamly.readTableOpt sfWIO forestFiresParser forestFiresPath
-        forestFiresColSubset :: Frames.Frame FFColSubset <- runIO $ FStreamly.inCoreAoS sf $ FStreamly.readTableOpt sfWIO fFColSubsetParser forestFiresPath
-        forestFiresFewerCols :: Frames.Frame FFColSubset <- runIO $ FStreamly.inCoreAoS sf $ FStreamly.readTableOpt sfWIO fFColSubsetParser forestFiresFewerColsPath
-        forestFiresRenameDay :: Frames.Frame FFRenameDay <- runIO $ FStreamly.inCoreAoS sf $ FStreamly.readTableOpt sfWIO fFColSubsetParser forestFiresPath
-        forestFiresNoHeader :: Frames.Frame FFNoHeader <- runIO $ FStreamly.inCoreAoS sf $ FStreamly.readTableOpt sfWIO fFNoHeaderParser forestFiresNoHeaderPath
-        forestFiresIgnoreHeader :: Frames.Frame FFIgnoreHeader <- runIO $ FStreamly.inCoreAoS sf $ FStreamly.readTableOpt sfWIO fFIgnoreHeaderParser forestFiresPath
+        forestFires :: Frames.Frame ForestFires <- runIO $ Streaming.runSafe @s $ FStreamly.inCoreAoS $ FStreamly.readTableOpt @_ @s @IO forestFiresParser forestFiresPath
+        forestFiresColSubset :: Frames.Frame FFColSubset <- runIO $ Streaming.runSafe @s $ FStreamly.inCoreAoS $ FStreamly.readTableOpt @_ @s @IO fFColSubsetParser forestFiresPath
+        forestFiresFewerCols :: Frames.Frame FFColSubset <- runIO $ Streaming.runSafe @s $ FStreamly.inCoreAoS $ FStreamly.readTableOpt @_ @s @IO fFColSubsetParser forestFiresFewerColsPath
+        forestFiresRenameDay :: Frames.Frame FFRenameDay <- runIO $ Streaming.runSafe @s $ FStreamly.inCoreAoS $ FStreamly.readTableOpt @_ @s @IO fFColSubsetParser forestFiresPath
+        forestFiresNoHeader :: Frames.Frame FFNoHeader <- runIO $ Streaming.runSafe @s $ FStreamly.inCoreAoS $ FStreamly.readTableOpt @_ @s @IO fFNoHeaderParser forestFiresNoHeaderPath
+        forestFiresIgnoreHeader :: Frames.Frame FFIgnoreHeader <- runIO $ Streaming.runSafe @s $ FStreamly.inCoreAoS $ FStreamly.readTableOpt @_ @s @IO fFIgnoreHeaderParser forestFiresPath
         forestFiresIgnoreHeaderChooseNames :: Frames.Frame FFIgnoreHeaderChooseNames <-
-          runIO $ FStreamly.inCoreAoS sf $ FStreamly.readTableOpt sfWIO fFIgnoreHeaderChooseNamesParser forestFiresPath
+          runIO $ Streaming.runSafe @s $ FStreamly.inCoreAoS $ FStreamly.readTableOpt @_ @s @IO fFIgnoreHeaderChooseNamesParser forestFiresPath
         describe desc $ do
           context "Can generate types and load the corresponding data a variety of ways" $ do
             it "load frames and insure all have same number of rows (AllCols  vs. ColSubset)" $
@@ -86,6 +87,6 @@ spec = do
             it "generate named types for columns chosen by col number.  In this case, should match col subset after renaming Day to DayOfWeek" $
               forestFiresIgnoreHeaderChooseNames == forestFiresRenameDay
             it "throw an exception when parsing (ignoring or absent a header line) a file with the wrong number of columns" $ do
-              (FStreamly.inCoreAoS sf $ FStreamly.readTableOpt @(Frames.RecordColumns ForestFires) sfWIO fFIgnoreHeaderParser forestFiresFewerColsPath) `shouldThrow` wrongNumberColumnsSelector
-  specF "Streamly backend" Streaming.streamlyFunctionsWithIO
-  specF "Pipes backend" Streaming.pipesFunctionsWithIO
+              (Streaming.runSafe @s $ FStreamly.inCoreAoS $ FStreamly.readTableOpt @(Frames.RecordColumns ForestFires) @s @IO fFIgnoreHeaderParser forestFiresFewerColsPath) `shouldThrow` wrongNumberColumnsSelector
+  specF @(Streaming.StreamlyStream Streaming.SerialT) "Streamly backend"
+  specF @Streaming.PipeStream "Pipes backend"

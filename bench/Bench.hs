@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
@@ -13,7 +14,7 @@ import Paths
 import qualified Frames.Streamly.CSV as FStreamly
 import qualified Frames.Streamly.InCore as FStreamly
 import qualified Frames.Streamly.TH as FStreamly
-import qualified Frames.Streamly.Streaming.Interface as Stream
+import qualified Frames.Streamly.Streaming.Class as Streaming
 import qualified Frames.Streamly.Streaming.Pipes as StreamP
 import qualified Frames.Streamly.Streaming.Streamly as StreamS
 
@@ -32,13 +33,12 @@ import qualified Control.Foldl as FL
 FStreamly.tableTypes' ffNewRowGen
 Frames.tableTypes' ffRowGen
 
-loadAndCount :: Stream.StreamFunctionsWithIO s IO -> Int -> IO Int
-loadAndCount sfWIO n = do
-  let sf = Stream.streamFunctions sfWIO
-      fLength = FL.fold FL.length
+loadAndCount :: forall s. Streaming.StreamFunctionsIO s IO => Int -> IO Int
+loadAndCount n = do
+  let fLength = FL.fold FL.length
   forestFiresPathPrefix <- Paths.usePath Paths.forestFiresPrefix
   let forestFiresPath = forestFiresPathPrefix <> show n <> ".csv"
-  forestFires :: Frames.Frame FFNew <- FStreamly.inCoreAoS sf $ FStreamly.readTableOpt sfWIO fFNewParser forestFiresPath
+  forestFires :: Frames.Frame FFNew <- Streaming.runSafe @s $ FStreamly.inCoreAoS $ FStreamly.readTableOpt @_ @s @IO fFNewParser forestFiresPath
   return $ fLength forestFires
 
 loadAndCountF :: Int -> IO Int
@@ -50,16 +50,16 @@ loadAndCountF n = do
   return $ fLength forestFires
 
 
-loadAndTransform :: Stream.StreamFunctionsWithIO s IO -> Int -> IO Int
-loadAndTransform sfWIO n = do
-  let sf = Stream.streamFunctions sfWIO
-      fLength = FL.fold FL.length
+loadAndTransform :: forall s. Streaming.StreamFunctionsIO s IO => Int -> IO Int
+loadAndTransform n = do
+  let fLength = FL.fold FL.length
   forestFiresPathPrefix <- Paths.usePath Paths.forestFiresPrefix
   let forestFiresPath = forestFiresPathPrefix <> show n <> ".csv"
   forestFires' :: Frames.FrameRec [MthC, DayC, X, Y, AX]  <-
-    FStreamly.inCoreAoS sf
-    $ Stream.sMapMaybe sf (either (const Nothing) Just . transform)
-    $ FStreamly.readTableOpt sfWIO fFNewParser forestFiresPath
+    Streaming.runSafe @s
+    $ FStreamly.inCoreAoS
+    $ Streaming.sMapMaybe (either (const Nothing) Just . transform)
+    $ FStreamly.readTableOpt @_ @s @IO fFNewParser forestFiresPath
   return $ fLength forestFires'
 
 loadAndTransformF :: Int -> IO Int
@@ -76,33 +76,33 @@ loadAndTransformF n = do
 
 
 main = defaultMain [
-  bgroup "loadAndCount (500)" [ bench "Pipes" $ nfIO (loadAndCount StreamP.pipesFunctionsWithIO 500)
-                              , bench "Streamly" $ nfIO (loadAndCount StreamS.streamlyFunctionsWithIO 500)
+  bgroup "loadAndCount (500)" [ bench "Pipes" $ nfIO (loadAndCount @StreamP.PipeStream 500)
+                              , bench "Streamly" $ nfIO (loadAndCount @(StreamS.StreamlyStream StreamS.SerialT) 500)
                               , bench "Frames" $ nfIO (loadAndCountF 500)
                               ]
-  , bgroup "loadAndTransform (500)" [ bench "Pipes" $ nfIO (loadAndTransform StreamP.pipesFunctionsWithIO 500)
-                                    , bench "Streamly" $ nfIO (loadAndTransform StreamS.streamlyFunctionsWithIO 500)
+  , bgroup "loadAndTransform (500)" [ bench "Pipes" $ nfIO (loadAndTransform @StreamP.PipeStream 500)
+                                    , bench "Streamly" $ nfIO (loadAndTransform @(StreamS.StreamlyStream StreamS.SerialT) 500)
                                     , bench "Frames" $ nfIO (loadAndTransformF 500)
                               ]
-  , bgroup "loadAndCount (5000)" [ bench "Pipes" $ nfIO (loadAndCount StreamP.pipesFunctionsWithIO 5000)
-                                 , bench "Streamly" $ nfIO (loadAndCount StreamS.streamlyFunctionsWithIO 5000)
+  , bgroup "loadAndCount (5000)" [ bench "Pipes" $ nfIO (loadAndCount @StreamP.PipeStream 5000)
+                                 , bench "Streamly" $ nfIO (loadAndCount @(StreamS.StreamlyStream StreamS.SerialT) 5000)
                                  , bench "Frames" $ nfIO (loadAndCountF 5000)
                                  ]
-  , bgroup "loadAndTransform (5000)" [ bench "Pipes" $ nfIO (loadAndTransform StreamP.pipesFunctionsWithIO 5000)
-                                     , bench "Streamly" $ nfIO (loadAndTransform StreamS.streamlyFunctionsWithIO 5000)
+  , bgroup "loadAndTransform (5000)" [ bench "Pipes" $ nfIO (loadAndTransform @StreamP.PipeStream 5000)
+                                     , bench "Streamly" $ nfIO (loadAndTransform @(StreamS.StreamlyStream StreamS.SerialT) 5000)
                                      , bench "Frames" $ nfIO (loadAndTransformF 5000)
                               ]
-  , bgroup "loadAndCount (50000)" [ bench "Pipes" $ nfIO (loadAndCount StreamP.pipesFunctionsWithIO 50000)
-                                  , bench "Streamly" $ nfIO (loadAndCount StreamS.streamlyFunctionsWithIO 50000)
+  , bgroup "loadAndCount (50000)" [ bench "Pipes" $ nfIO (loadAndCount @StreamP.PipeStream 50000)
+                                  , bench "Streamly" $ nfIO (loadAndCount @(StreamS.StreamlyStream StreamS.SerialT) 50000)
                                   , bench "Frames" $ nfIO (loadAndCountF 50000)
                                   ]
-  , bgroup "loadAndTransform (50000)" [ bench "Pipes" $ nfIO (loadAndTransform StreamP.pipesFunctionsWithIO 50000)
-                                      , bench "Streamly" $ nfIO (loadAndTransform StreamS.streamlyFunctionsWithIO 50000)
+  , bgroup "loadAndTransform (50000)" [ bench "Pipes" $ nfIO (loadAndTransform @StreamP.PipeStream 50000)
+                                      , bench "Streamly" $ nfIO (loadAndTransform @(StreamS.StreamlyStream StreamS.SerialT) 50000)
                                       , bench "Frames" $ nfIO (loadAndTransformF 50000)
                                     ]
 {-
-  , bgroup "loadAndCount (500000)" [ bench "Pipes" $ nfIO (loadAndCount StreamP.pipesFunctionsWithIO 500000)
-                                   , bench "Streamly" $ nfIO (loadAndCount StreamS.streamlyFunctionsWithIO 500000)
+  , bgroup "loadAndCount (500000)" [ bench "Pipes" $ nfIO (loadAndCount @StreamP.PipeStream 500000)
+                                   , bench "Streamly" $ nfIO (loadAndCount @(StreamS.StreamlyStream StreamS.SerialT) 500000)
                                    , bench "Frames" $ nfIO (loadAndCountF 500000)
                                    ]
 -}

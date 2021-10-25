@@ -1,3 +1,4 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -87,28 +88,9 @@ import qualified Language.Haskell.TH as TH (Type)
 import Language.Haskell.TH.Syntax hiding (Type)
 
 
-type DefaultStream = StreamlyStream SerialT
-
-{-
-defaultStreamFunctions :: StreamFunctions DefaultStream IO
-defaultStreamFunctions  = streamlyFunctions
-{-# INLINE defaultStreamFunctions #-}
-
-defaultStreamFunctionsWithIO :: StreamFunctionsWithIO DefaultStream IO
-defaultStreamFunctionsWithIO  = streamlyFunctionsWithIO
-{-# INLINE defaultStreamFunctionsWithIO #-}
--}
-{-
+--type DefaultStream = StreamlyStream SerialT
 type DefaultStream = PipeStream
 
-defaultStreamFunctions :: StreamFunctions PipeStream IO
-defaultStreamFunctions  = pipesFunctions
-{-# INLINE defaultStreamFunctions #-}
-
-defaultStreamFunctionsWithIO :: StreamFunctionsWithIO PipeStream IO
-defaultStreamFunctionsWithIO  = pipesFunctionsWithIO
-{-# INLINE defaultStreamFunctionsWithIO #-}
--}
 
 -- | Generate a column type.
 recDec :: [TH.Type] -> TH.Type
@@ -253,7 +235,7 @@ data RowGen (s :: (Type -> Type) -> Type -> Type) (b :: ColumnId) (a :: [Type]) 
          , isMissing :: Text -> Bool
            -- ^ Control what text is considered missing.
            -- Defaults to @isMissing t = null t || t == "NA"@
-         , lineReader :: s IO [Text]
+         , lineReader :: s (IOSafe s IO) [Text]
            -- ^ A producer of rows of ’T.Text’ values that were
            -- separated by a 'Separator' value.
          }
@@ -275,7 +257,7 @@ rowGen' fp = RowGen
   FSCU.parseableParseHowRec
   1000
   defaultIsMissing
-  (SCSV.streamTokenized' @s fp SCSV.defaultSep)
+  (SCSV.streamTokenized' @s @IO fp SCSV.defaultSep)
 {-# INLINEABLE rowGen' #-}
 
 -- | A default 'RowGen'. This instructs the type inference engine to
@@ -309,7 +291,7 @@ rowGenCat' fp = RowGen
   FSCU.parseableParseHowRec
   1000
   defaultIsMissing
-  (SCSV.streamTokenized' @s fp SCSV.defaultSep)
+  (SCSV.streamTokenized' @s @IO fp SCSV.defaultSep)
 {-# INLINEABLE rowGenCat' #-}
 
 -- | Like 'rowGen', but will also generate custom data types for
@@ -488,10 +470,11 @@ colNamesP src = fromMaybe [] <$> sHead src
 
 -- | Generate a type for a row of a table all of whose columns remain
 -- unparsed 'Text' values.
-tableTypesText' :: StreamFunctions s IO
-                => RowGen s b a -> DecsQ
+tableTypesText' :: forall s b a.StreamFunctionsIO s IO
+                => RowGen s b a
+                -> DecsQ
 tableTypesText' RowGen {..} = do
-  firstRow <- runIO $ colNamesP lineReader
+  firstRow <- runIO $ runSafe @s $ colNamesP lineReader
   let (allColStates, pch) = case genColumnSelector of
         ICSV.GenUsingHeader f _ ->
           let allHeaders = ICSV.HeaderText <$> firstRow
@@ -535,10 +518,12 @@ tableTypesText' RowGen {..} = do
 tableTypes' :: forall ts b s.
                (FSCT.ColumnTypeable (FSCU.ColType ts)
                , Show (ICSV.ColumnIdType b)
-               , StreamFunctions s IO)
+               , StreamFunctionsIO s IO)
             => RowGen s b ts -> DecsQ
 tableTypes' (RowGen {..}) = do
-  (typedCols, pch) <- runIO $ SCSV.readColHeaders columnParsers genColumnSelector lineSource :: Q ([SCSV.ColTypeInfo (FSCU.ColType ts)], ICSV.ParseColumnSelector)
+  (typedCols, pch) <- runIO
+                      $ runSafe @s
+                      $ SCSV.readColHeaders columnParsers genColumnSelector lineSource :: Q ([SCSV.ColTypeInfo (FSCU.ColType ts)], ICSV.ParseColumnSelector)
 --  let colDecsFromTypedCols :: (ICSV.ColTypeName, FSCU.ColType ts)
 --      colDecsFromTypedCols
   (colTypes, colDecs) <- (second concat . unzip)
@@ -551,7 +536,7 @@ tableTypes' (RowGen {..}) = do
   optsTy <- sigD optsName [t|ParserOptions|]
   optsDec <- valD (varP optsName) (normalB $ lift opts) []
   return (recTy : optsTy : optsDec : colDecs)
-  where lineSource :: s IO [Text]
+  where lineSource :: s (IOSafe s IO) [Text]
         lineSource = sTake inferencePrefix $ lineReader
         inferMaybe :: ICSV.OrMissingWhen -> FSCU.SomeMissing -> Bool
         inferMaybe mw sm = case mw of

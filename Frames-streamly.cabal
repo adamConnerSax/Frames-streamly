@@ -58,6 +58,8 @@ library
     , foldl >= 1.4.0 && < 1.5
     , ghc-prim >= 0.6 && < 0.8
     , pipes >= 4.3.14 && <4.4
+    , pipes-safe >= 2.3.1 && < 2.4
+    , pipes-text >= 1.0 && < 1.1
     , primitive >=0.7 && <0.8
     , readable >= 0.3 && <0.4
     , relude >=1.0.0 && < 1.1
@@ -119,6 +121,7 @@ test-suite FramesStreamlySpec
     , base
     , containers
     , foldl
+    , pipes-safe
     , streamly
     , text
     , vinyl
@@ -131,7 +134,7 @@ benchmark bench-frames-streamly
   type:                exitcode-stdio-1.0
   hs-source-dirs:      bench
   other-modules: Paths
-  ghc-options:         -O2 -fspec-constr-recursive=16 -fmax-worker-args=16 -fspecialise-aggressively -funbox-strict-fields -fexpose-all-unfoldings -fforce-recomp
+  ghc-options:         -O2 -fspec-constr-recursive=16 -fmax-worker-args=16 -fspecialise-aggressively -funbox-strict-fields -fexpose-all-unfoldings
   main-is:             Bench.hs
   build-depends:       base
                      , containers

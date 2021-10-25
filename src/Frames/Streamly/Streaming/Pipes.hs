@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures #-}
@@ -6,9 +7,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE UndecidableInstances #-}
 module Frames.Streamly.Streaming.Pipes
   (
     PipeStream(..)
+    -- * re-exports for MonadSafe
+  , MonadSafe
+  , SafeT
+  , runSafeT
   ) where
 
 import Frames.Streamly.Streaming.Class
@@ -18,14 +24,15 @@ import Frames.Streamly.Internal.CSV (FramesCSVException(..))
 import qualified Pipes
 import Pipes ((>->))
 import qualified Pipes.Prelude as Pipes
-import qualified System.IO as IO
+import qualified Pipes.Safe as PSafe
+import Pipes.Safe (MonadSafe, SafeT, runSafeT)
+import qualified Pipes.Prelude.Text as PText
 
 import qualified Control.Foldl as Foldl
 import           Control.Monad.Catch                     ( MonadThrow(..))
 
 --import Control.Monad.IO.Class (MonadIO(..))
-
-import qualified Data.Text as T
+--import qualified Data.Text as T
 
 newtype PipeStream m a = PipeStream { producer :: Pipes.Producer a m () }
 
@@ -64,10 +71,13 @@ instance Monad m => StreamFunctions PipeStream m where
   sFromFoldable = PipeStream . pipesFromFoldable
   {-# INLINEABLE sFromFoldable #-}
 
-instance MonadIO m => StreamFunctionsIO PipeStream m where
-  sReadTextLines = PipeStream . pipesReadTextLines
+instance (Monad m, MonadThrow m, PSafe.MonadMask m, MonadIO m, Foldl.PrimMonad (PSafe.SafeT m)) => StreamFunctionsIO PipeStream m where
+  type IOSafe PipeStream m = PSafe.SafeT m
+  runSafe = PSafe.runSafeT
+  {-# INLINE runSafe #-}
+  sReadTextLines = PipeStream . PText.readFileLn
   {-# INLINEABLE sReadTextLines #-}
-  sWriteTextLines fp = pipesWriteTextLines fp . producer
+  sWriteTextLines fp s = PSafe.runSafeT $ Pipes.runEffect $ (producer s) Pipes.>-> PText.writeFileLn fp
   {-# INLINEABLE sWriteTextLines #-}
 
 pipesPostMapM :: Monad m => (b -> m c) -> Foldl.FoldM m a b -> Foldl.FoldM m a c
@@ -91,13 +101,12 @@ pipesFolder :: Monad m => (x -> b -> x) -> x -> Pipes.Producer b m () -> m x
 pipesFolder step start = Pipes.fold step start id
 {-# INLINE pipesFolder #-}
 
-
 pipesFromFoldable :: (Functor m, Foldable f) => f a -> Pipes.Producer a m ()
 pipesFromFoldable = Pipes.each
 {-# INLINE pipesFromFoldable #-}
-
+{-
 -- how/when does this handle get closed??
-pipesReadTextLines :: MonadIO m => FilePath -> Pipes.Producer Text m ()
+pipesReadTextLines :: (MonadIO m, PSafe.MonadSafe m) => FilePath -> Pipes.Producer Text m ()
 pipesReadTextLines fp = do
   h <- Pipes.lift $ liftIO $ IO.openFile fp IO.ReadMode
   Pipes.fromHandle h Pipes.>-> Pipes.map T.pack
@@ -109,7 +118,7 @@ pipesWriteTextLines fp s = do
   Pipes.runEffect $ s Pipes.>-> Pipes.map T.unpack Pipes.>-> Pipes.toHandle h
   liftIO $ IO.hClose h
 {-# INLINABLE pipesWriteTextLines #-}
-
+-}
 pipeStreamUncons :: Monad m => PipeStream m a -> m (Maybe (a, PipeStream m a))
 pipeStreamUncons p = do
   pUncons <- Pipes.next (producer p)

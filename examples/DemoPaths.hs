@@ -6,6 +6,7 @@
 {-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module DemoPaths where
@@ -89,7 +90,7 @@ ffInferTypedDayRG = FStreamly.modifyColumnSelector modSelector rg
          FStreamly.parseableParseHowRec
          1000
          FStreamly.defaultIsMissing
-         (FStreamly.streamTokenized' (thPath forestFiresPath) FStreamly.defaultSep)
+         (FStreamly.streamTokenized' @_ @IO (thPath forestFiresPath) FStreamly.defaultSep)
     modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
 
 ffInferTypedDayOrMissingRG :: FStreamly.RowGen FStreamly.DefaultStream 'FStreamly.ColumnByName TDColumns
@@ -149,7 +150,7 @@ ffInferTypedDayMonthRG = FStreamly.modifyColumnSelector modSelector rg
          dayMonthColsParserHowRec
          1000
          FStreamly.defaultIsMissing
-         (FStreamly.streamTokenized' (thPath forestFiresPath) FStreamly.defaultSep)
+         (FStreamly.streamTokenized' @_ @IO (thPath forestFiresPath) FStreamly.defaultSep)
     modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
 
 
