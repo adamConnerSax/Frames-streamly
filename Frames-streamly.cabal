@@ -58,6 +58,7 @@ library
     , foldl >= 1.4.0 && < 1.5
     , ghc-prim >= 0.6 && < 0.8
     , pipes >= 4.3.14 && <4.4
+--    , pipes-bytestring >= 2.1.6 && < 2.2
     , pipes-safe >= 2.3.1 && < 2.4
     , pipes-text >= 1.0 && < 1.1
     , primitive >=0.7 && <0.8

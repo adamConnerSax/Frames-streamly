@@ -25,9 +25,12 @@ import qualified Pipes
 import Pipes ((>->))
 import qualified Pipes.Prelude as Pipes
 import qualified Pipes.Safe as PSafe
+--import qualified Pipes.Safe.Prelude as PSafe
 import Pipes.Safe (MonadSafe, SafeT, runSafeT)
 import qualified Pipes.Prelude.Text as PText
-
+--import qualified Pipes.Text.Encoding as PText
+--import qualified Pipes.ByteString as PBS
+--import qualified System.IO as IO
 import qualified Control.Foldl as Foldl
 import           Control.Monad.Catch                     ( MonadThrow(..))
 
@@ -80,6 +83,20 @@ instance (Monad m, MonadThrow m, PSafe.MonadMask m, MonadIO m, Foldl.PrimMonad (
   sWriteTextLines fp s = PSafe.runSafeT $ Pipes.runEffect $ (producer s) Pipes.>-> PText.writeFileLn fp
   {-# INLINEABLE sWriteTextLines #-}
 
+-- These don't work and I'm not sure why.  Doen right, they should be faster than the versions above.
+{-
+pipesReadTextLines :: (MonadIO m, PSafe.MonadSafe m) => FilePath -> Pipes.Producer Text m ()
+pipesReadTextLines fp =
+  PSafe.withFile fp IO.ReadMode $ void . PText.decodeUtf32BE . PBS.fromHandle
+{-# INLINABLE pipesReadTextLines #-}
+
+
+pipesWriteTextLines :: (MonadIO m, PSafe.MonadSafe m) => FilePath -> Pipes.Producer Text m () -> m ()
+pipesWriteTextLines fp s = PSafe.withFile fp IO.WriteMode $ \h -> do
+  Pipes.runEffect $ Pipes.for s PText.encodeUtf8 Pipes.>-> PBS.toHandle h
+{-# INLINABLE pipesWriteTextLines #-}
+-}
+
 pipesPostMapM :: Monad m => (b -> m c) -> Foldl.FoldM m a b -> Foldl.FoldM m a c
 pipesPostMapM f (Foldl.FoldM step begin done) = Foldl.FoldM step begin done'
   where done' x = done x >>= f
@@ -104,21 +121,7 @@ pipesFolder step start = Pipes.fold step start id
 pipesFromFoldable :: (Functor m, Foldable f) => f a -> Pipes.Producer a m ()
 pipesFromFoldable = Pipes.each
 {-# INLINE pipesFromFoldable #-}
-{-
--- how/when does this handle get closed??
-pipesReadTextLines :: (MonadIO m, PSafe.MonadSafe m) => FilePath -> Pipes.Producer Text m ()
-pipesReadTextLines fp = do
-  h <- Pipes.lift $ liftIO $ IO.openFile fp IO.ReadMode
-  Pipes.fromHandle h Pipes.>-> Pipes.map T.pack
-{-# INLINABLE pipesReadTextLines #-}
 
-pipesWriteTextLines :: MonadIO m => FilePath -> Pipes.Producer Text m () -> m ()
-pipesWriteTextLines fp s = do
-  h <- liftIO $ IO.openFile fp IO.WriteMode
-  Pipes.runEffect $ s Pipes.>-> Pipes.map T.unpack Pipes.>-> Pipes.toHandle h
-  liftIO $ IO.hClose h
-{-# INLINABLE pipesWriteTextLines #-}
--}
 pipeStreamUncons :: Monad m => PipeStream m a -> m (Maybe (a, PipeStream m a))
 pipeStreamUncons p = do
   pUncons <- Pipes.next (producer p)
