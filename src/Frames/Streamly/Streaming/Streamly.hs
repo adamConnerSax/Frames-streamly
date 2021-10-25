@@ -10,10 +10,7 @@
 {-# LANGUAGE TypeFamilies #-}
 module Frames.Streamly.Streaming.Streamly
   (
-    streamlyFunctions
-  , streamlyFunctionsIO
-  , streamlyFunctionsWithIO
-  , SerialT
+    StreamlyStream(..)
   )
 where
 
@@ -42,23 +39,23 @@ import qualified Streamly.Data.Unicode.Stream           as Streamly.Unicode
 import qualified Streamly.Internal.Data.Fold as Streamly.Fold
 #endif
 
-newtype StreamlyStream m a = StreamlyStream { stream :: Streamly.SerialT m a }
+newtype StreamlyStream (t ::  (Type -> Type) -> Type -> Type) m a = StreamlyStream { stream :: t m a }
 
-instance IsStream t => StreamFunctions (StreamlyStream t) m where
+instance (IsStream t, Monad m) => StreamFunctions (StreamlyStream t) m where
   type FoldType (StreamlyStream t) = Streamly.Fold.Fold
   sThrowIfEmpty = streamlyThrowIfEmpty . stream
   {-# INLINEABLE sThrowIfEmpty #-}
-  sCons a = StreamlyStream . streamly.cons a . stream
+  sCons a = StreamlyStream . Streamly.cons a . stream
   {-# INLINEABLE sCons #-}
-  sUncons = streamlyStreamuncons
+  sUncons = streamlyStreamUncons
   {-# INLINEABLE sUncons #-}
-  sHead = Streamly.head . stream
+  sHead = Streamly.head . Streamly.adapt . stream
   {-# INLINEABLE sHead #-}
   sMap f = StreamlyStream . Streamly.map f . stream
   {-# INLINEABLE sMap #-}
-  sMapMaybe f s = StreamlyStream . Streamly.mapMaybe f . stream
+  sMapMaybe f = StreamlyStream . Streamly.mapMaybe f . stream
   {-# INLINEABLE sMapMaybe #-}
-  sScanM step start = StreamlyStream . Streamly.scanlM' step start . stream s
+  sScanM step start = StreamlyStream . Streamly.scanlM' step start . stream
   {-# INLINEABLE sScanM #-}
   sDrop n = StreamlyStream . Streamly.drop n . stream
   {-# INLINEABLE sDrop #-}
@@ -72,22 +69,22 @@ instance IsStream t => StreamFunctions (StreamlyStream t) m where
   {-# INLINEABLE sBuildFoldM #-}
   sMapFoldM = Streamly.Fold.rmapM
   {-# INLINEABLE sMapFoldM #-}
-  sFold fld  = Streamly.fold . stream
+  sFold fld  = Streamly.fold fld . Streamly.adapt . stream
   {-# INLINEABLE sFold #-}
-  sToList = Streamly.toList . stream -- this might be bad (not lazy) compared to streamly
+  sToList = Streamly.toList . Streamly.adapt . stream -- this might be bad (not lazy) compared to streamly
   {-# INLINEABLE sToList #-}
   sFromFoldable = StreamlyStream . Streamly.fromFoldable
   {-# INLINEABLE sFromFoldable #-}
 
-instance (IsStream t, MonadIO m) => StreamFunctionsIO (StreamlyStream t)  m where
+instance (IsStream t, Streamly.MonadAsync m, MonadCatch m) => StreamFunctionsIO (StreamlyStream t)  m where
   sReadTextLines = StreamlyStream . streamlyReadTextLines
   {-# INLINEABLE sReadTextLines #-}
-  sWriteTextLines = streamlyWriteTextLines . stream
+  sWriteTextLines fp = streamlyWriteTextLines fp . stream
   {-# INLINEABLE sWriteTextLines #-}
 
 streamlyStreamUncons :: (IsStream t, Monad m) => StreamlyStream t m a -> m (Maybe (a, StreamlyStream t m a))
 streamlyStreamUncons s = do
-  sUncons <- Streamly.uncons (stream s)
+  sUncons <- Streamly.uncons (Streamly.adapt $ stream s)
   case sUncons of
     Nothing -> return Nothing
     Just (a, s) -> return $ Just (a, StreamlyStream s)
@@ -128,12 +125,12 @@ streamlyReadTextLines :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch
 streamlyReadTextLines = word8ToTextLines2 . streamWord8
 {-# INLINE streamlyReadTextLines #-}
 
-streamlyThrowIfEmpty :: MonadThrow m => Streamly.SerialT m a -> m ()
-streamlyThrowIfEmpty s = Streamly.null s >>= flip when (throwM EmptyStreamException)
+streamlyThrowIfEmpty :: (IsStream t, MonadThrow m) => t m a -> m ()
+streamlyThrowIfEmpty s = Streamly.null (Streamly.adapt s) >>= flip when (throwM EmptyStreamException)
 {-# INLINE streamlyThrowIfEmpty #-}
 
-streamlyFolder :: Monad m => (x -> a -> x) -> x -> Streamly.SerialT m a -> m x
-streamlyFolder step start = Streamly.fold (streamlyBuildFold step start id)
+streamlyFolder :: (IsStream t, Monad m) => (x -> a -> x) -> x -> t m a -> m x
+streamlyFolder step start = Streamly.fold (streamlyBuildFold step start id) . Streamly.adapt
 {-# INLINABLE streamlyFolder #-}
 
 streamWord8 :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m Word8

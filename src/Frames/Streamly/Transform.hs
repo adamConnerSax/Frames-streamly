@@ -36,7 +36,8 @@ module Frames.Streamly.Transform
 where
 
 import qualified Frames.Streamly.InCore as FS
-import Frames.Streamly.Streaming.Streamly (streamlyFunctions)
+import Frames.Streamly.Streaming.Class (StreamFunctions(..))
+import Frames.Streamly.Streaming.Streamly (StreamlyStream(..))
 import Prelude hiding (filter, mapMaybe)
 
 #if MIN_VERSION_streamly(0,8,0)
@@ -82,7 +83,7 @@ transform ::
   , Frames.RecVec bs
   )
   => (t m (Frames.Record as) -> Streamly.SerialT m (Frames.Record bs)) -> Frames.FrameRec as -> m (Frames.FrameRec bs)
-transform f = FS.inCoreAoS streamlyFunctions . f . Streamly.fromFoldable
+transform f = FS.inCoreAoS . StreamlyStream . f . Streamly.fromFoldable
 {-# INLINE transform #-}
 
 -- | Filter using streamly

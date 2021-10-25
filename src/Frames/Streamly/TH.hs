@@ -61,9 +61,9 @@ where
 
 import Prelude hiding (lift)
 
-import Frames.Streamly.Streaming.Streamly (streamlyFunctions, streamlyFunctionsWithIO, SerialT)
-import Frames.Streamly.Streaming.Pipes (pipesFunctions, pipesFunctionsWithIO, PipeStream)
-import Frames.Streamly.Streaming.Interface
+import Frames.Streamly.Streaming.Streamly (StreamlyStream(..))
+import Frames.Streamly.Streaming.Pipes (PipeStream(..))
+import Frames.Streamly.Streaming.Class
 import qualified Frames.Streamly.CSV as SCSV
 import Frames.Streamly.CSV (ParserOptions(..), defaultSep) -- for re-export or TH
 import Frames.Streamly.OrMissing
@@ -88,7 +88,7 @@ import Language.Haskell.TH hiding (Type)
 import qualified Language.Haskell.TH as TH (Type)
 import Language.Haskell.TH.Syntax hiding (Type)
 
-
+{-
 type DefaultStream = SerialT
 
 defaultStreamFunctions :: StreamFunctions DefaultStream IO
@@ -98,7 +98,7 @@ defaultStreamFunctions  = streamlyFunctions
 defaultStreamFunctionsWithIO :: StreamFunctionsWithIO DefaultStream IO
 defaultStreamFunctionsWithIO  = streamlyFunctionsWithIO
 {-# INLINE defaultStreamFunctionsWithIO #-}
-
+-}
 {-
 type DefaultStream = PipeStream
 
@@ -254,8 +254,6 @@ data RowGen (s :: (Type -> Type) -> Type -> Type) (b :: ColumnId) (a :: [Type]) 
          , isMissing :: Text -> Bool
            -- ^ Control what text is considered missing.
            -- Defaults to @isMissing t = null t || t == "NA"@
-         , streamFunctions :: StreamFunctions s IO
-           -- ^ streaming back-end for loading/processing data in file
          , lineReader :: s IO [Text]
            -- ^ A producer of rows of ’T.Text’ values that were
            -- separated by a 'Separator' value.

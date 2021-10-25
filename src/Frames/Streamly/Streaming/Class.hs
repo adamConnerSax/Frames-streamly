@@ -9,9 +9,11 @@
 {-# LANGUAGE TypeFamilies #-}
 module Frames.Streamly.Streaming.Class where
 
-class StreamFunctions (s :: (Type -> Type) -> Type -> Type) (m :: Type -> Type) where
+import           Control.Monad.Catch                     ( MonadThrow(..))
+
+class Monad m => StreamFunctions (s :: (Type -> Type) -> Type -> Type) (m :: Type -> Type) where
   type FoldType s ::  (Type -> Type) -> Type -> Type -> Type
-  sThrowIfEmpty :: forall x. s m x -> m ()
+  sThrowIfEmpty :: forall x. MonadThrow m => s m x -> m ()
   -- ^ throw an exception if the stream is empty
   sCons :: forall a. a -> s m a -> s m a
   -- ^ add an element to the head of a stream

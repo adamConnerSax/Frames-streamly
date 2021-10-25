@@ -1,15 +1,14 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TypeFamilies #-}
 module Frames.Streamly.Streaming.Pipes
   (
-    pipesFunctions
-  , pipesFunctionsIO
-  , pipesFunctionsWithIO
-  , PipeStream
+    PipeStream(..)
   ) where
 
 import Frames.Streamly.Streaming.Class
@@ -23,15 +22,16 @@ import qualified System.IO as IO
 
 import qualified Control.Foldl as Foldl
 import           Control.Monad.Catch                     ( MonadThrow(..))
+
 --import Control.Monad.IO.Class (MonadIO(..))
 
 import qualified Data.Text as T
 
 newtype PipeStream m a = PipeStream { producer :: Pipes.Producer a m () }
 
-instance StreamFunctions PipeStream m where
-  type FoldType StreamFunctions = Foldl.FoldM
-  sThrowIfEmpty = Pipes.pipesThrowIfEmpty . producer
+instance Monad m => StreamFunctions PipeStream m where
+  type FoldType PipeStream = Foldl.FoldM
+  sThrowIfEmpty = pipesThrowIfEmpty . producer
   {-# INLINEABLE sThrowIfEmpty #-}
   sCons a s = PipeStream $ Pipes.yield a >> producer s
   {-# INLINEABLE sCons #-}
@@ -64,26 +64,16 @@ instance StreamFunctions PipeStream m where
   sFromFoldable = PipeStream . pipesFromFoldable
   {-# INLINEABLE sFromFoldable #-}
 
-instance StreamFunctionsIO PipeStream m where
-  sReadTextLines = pipesReadTextLines
+instance MonadIO m => StreamFunctionsIO PipeStream m where
+  sReadTextLines = PipeStream . pipesReadTextLines
   {-# INLINEABLE sReadTextLines #-}
-  sWriteTextLines = pipesWriteTextLines
+  sWriteTextLines fp = pipesWriteTextLines fp . producer
   {-# INLINEABLE sWriteTextLines #-}
 
 pipesPostMapM :: Monad m => (b -> m c) -> Foldl.FoldM m a b -> Foldl.FoldM m a c
 pipesPostMapM f (Foldl.FoldM step begin done) = Foldl.FoldM step begin done'
   where done' x = done x >>= f
 {-# INLINABLE pipesPostMapM #-}
-
-pipesFunctionsIO :: (Monad m, MonadThrow m, MonadIO m) => StreamFunctionsIO PipeStream m
-pipesFunctionsIO = StreamFunctionsIO
-  (PipeStream . pipesReadTextLines)
-  (\fp -> pipesWriteTextLines fp . producer)
-{-# INLINEABLE pipesFunctionsIO #-}
-
-pipesFunctionsWithIO :: (Monad m, MonadThrow m, MonadIO m) => StreamFunctionsWithIO PipeStream m
-pipesFunctionsWithIO = StreamFunctionsWithIO pipesFunctions pipesFunctionsIO
-{-# INLINEABLE pipesFunctionsWithIO #-}
 
 pipesBuildFold :: Monad m => (x -> a -> x) -> x -> (x -> b) -> Foldl.FoldM m a b
 pipesBuildFold step start extract = Foldl.generalize $ Foldl.Fold step start extract
