@@ -88,8 +88,8 @@ import qualified Language.Haskell.TH as TH (Type)
 import Language.Haskell.TH.Syntax hiding (Type)
 
 
---type DefaultStream = StreamlyStream SerialT
-type DefaultStream = PipeStream
+type DefaultStream = StreamlyStream SerialT
+--type DefaultStream = PipeStream
 
 
 -- | Generate a column type.
