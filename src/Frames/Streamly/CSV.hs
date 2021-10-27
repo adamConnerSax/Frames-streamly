@@ -99,11 +99,13 @@ module Frames.Streamly.CSV
     , QuotingMode(..)
     , defaultSep
     , FramesCSVException(..)
+    , ParseColumnSelector
+    , ColumnIdType
     )
 where
 
 import qualified Frames.Streamly.Internal.CSV as ICSV
-import Frames.Streamly.Internal.CSV (FramesCSVException(..))
+import Frames.Streamly.Internal.CSV (FramesCSVException(..), ParseColumnSelector, ColumnIdType)
 import Frames.Streamly.Streaming.Class (StreamFunctions(..), StreamFunctionsIO(..))
 import qualified Frames.Streamly.ColumnTypeable as FSCT
 
@@ -761,11 +763,10 @@ readColHeaders :: forall a b s m.
                -> m ([ColTypeInfo a], ICSV.ParseColumnSelector)
 readColHeaders parsers rgColHandler s =  do
   let csToBool =  (/= ICSV.Exclude)
+  (firstRow, mTail) <- sUncons s >>= maybe (throwM ICSV.EmptyStreamException) return
   -- headerRow :: [(ICSV.ColTypeName , ICSV.OrMissingWhen)]
   -- pch :: ICSV.ParseColumnSelector
   -- rF :: Maybe [Bool]
-  mUncons <- sUncons s-- @Streamly.SerialT s
-  (firstRow, mTail) <- maybe (throwM ICSV.EmptyStreamException) return mUncons
   (headerRow, pch, rF, inferS) <- case rgColHandler of
     ICSV.GenUsingHeader f mrF -> do
       let allHeaders = ICSV.HeaderText <$> firstRow -- (draw >>= maybe err return)
@@ -796,7 +797,7 @@ readColHeaders parsers rgColHandler s =  do
   let isMissing t = T.null t || t == "NA"
       assembleCTI :: (ICSV.ColTypeName, ICSV.OrMissingWhen) -> a -> ColTypeInfo a
       assembleCTI (a, b) c = ColTypeInfo a b c
-  colTypes <- prefixInference @_ @s parsers isMissing rF inferS
+  colTypes <- prefixInference @a @s parsers isMissing rF inferS
   unless (length headerRow == length colTypes) $ errNumColumns headerRow colTypes
   return (zipWith assembleCTI headerRow colTypes, pch)
   where errNumColumns hs cts =

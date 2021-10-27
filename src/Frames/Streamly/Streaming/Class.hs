@@ -15,6 +15,8 @@ class Monad m => StreamFunctions (s :: (Type -> Type) -> Type -> Type) (m :: Typ
   type FoldType s ::  (Type -> Type) -> Type -> Type -> Type
   sThrowIfEmpty :: forall x. MonadThrow m => s m x -> m ()
   -- ^ throw an exception if the stream is empty
+  sLength :: s m a -> m Int
+  -- ^ return the length of the stream
   sCons :: forall a. a -> s m a -> s m a
   -- ^ add an element to the head of a stream
   sUncons :: forall a . s m a -> m (Maybe (a, s m a))

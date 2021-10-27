@@ -42,46 +42,52 @@ newtype PipeStream m a = PipeStream { producer :: Pipes.Producer a m () }
 instance Monad m => StreamFunctions PipeStream m where
   type FoldType PipeStream = Foldl.FoldM
   sThrowIfEmpty = pipesThrowIfEmpty . producer
-  {-# INLINEABLE sThrowIfEmpty #-}
+  sLength = Pipes.length . producer
   sCons a s = PipeStream $ Pipes.yield a >> producer s
-  {-# INLINEABLE sCons #-}
   sUncons = pipeStreamUncons
-  {-# INLINEABLE sUncons #-}
   sHead = Pipes.head . producer
-  {-# INLINEABLE sHead #-}
   sMap f s = PipeStream $ producer s >-> Pipes.map f
-  {-# INLINEABLE sMap #-}
   sMapMaybe f s = PipeStream $  producer s >-> Pipes.mapMaybe f
-  {-# INLINEABLE sMapMaybe #-}
   sScanM step start s = PipeStream $ producer s >-> Pipes.scanM step start return
-  {-# INLINEABLE sScanM #-}
   sDrop n s = PipeStream $ producer s >-> Pipes.drop n
-  {-# INLINEABLE sDrop #-}
   sTake n s = PipeStream $ producer s >-> Pipes.take n
-  {-# INLINEABLE sTake #-}
   sFolder step start = pipesFolder step start . producer
-  {-# INLINEABLE sFolder #-}
   sBuildFold = pipesBuildFold
-  {-# INLINEABLE sBuildFold #-}
   sBuildFoldM = pipesBuildFoldM
-  {-# INLINEABLE sBuildFoldM #-}
   sMapFoldM = pipesPostMapM
-  {-# INLINEABLE sMapFoldM #-}
   sFold fld  = Foldl.impurely Pipes.foldM fld . producer
-  {-# INLINEABLE sFold #-}
   sToList = Pipes.toListM . producer -- this might be bad (not lazy) compared to streamly
-  {-# INLINEABLE sToList #-}
   sFromFoldable = PipeStream . pipesFromFoldable
+
+  {-# INLINEABLE sThrowIfEmpty #-}
+  {-# INLINEABLE sLength #-}
+  {-# INLINEABLE sCons #-}
+  {-# INLINEABLE sUncons #-}
+  {-# INLINEABLE sHead #-}
+  {-# INLINEABLE sMap #-}
+  {-# INLINEABLE sMapMaybe #-}
+  {-# INLINEABLE sScanM #-}
+  {-# INLINEABLE sDrop #-}
+  {-# INLINEABLE sTake #-}
+  {-# INLINEABLE sFolder #-}
+  {-# INLINEABLE sBuildFold #-}
+  {-# INLINEABLE sBuildFoldM #-}
+  {-# INLINEABLE sMapFoldM #-}
+  {-# INLINEABLE sFold #-}
+  {-# INLINEABLE sToList #-}
   {-# INLINEABLE sFromFoldable #-}
+
 
 instance (Monad m, MonadThrow m, PSafe.MonadMask m, MonadIO m, Foldl.PrimMonad (PSafe.SafeT m)) => StreamFunctionsIO PipeStream m where
   type IOSafe PipeStream m = PSafe.SafeT m
   runSafe = PSafe.runSafeT
-  {-# INLINE runSafe #-}
   sReadTextLines = PipeStream . PText.readFileLn
-  {-# INLINEABLE sReadTextLines #-}
   sWriteTextLines fp s = PSafe.runSafeT $ Pipes.runEffect $ (producer s) Pipes.>-> PText.writeFileLn fp
+
+  {-# INLINE runSafe #-}
+  {-# INLINEABLE sReadTextLines #-}
   {-# INLINEABLE sWriteTextLines #-}
+
 
 -- These don't work and I'm not sure why.  Doen right, they should be faster than the versions above.
 {-

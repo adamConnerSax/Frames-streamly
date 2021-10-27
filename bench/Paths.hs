@@ -1,8 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE NoMonomorphismRestriction #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
 
@@ -10,10 +13,16 @@ module Paths where
 
 import qualified Paths_Frames_streamly as Paths
 import qualified Frames.Streamly.TH as FStreamly
+import qualified Frames.Streamly.CSV as FStreamly
+import qualified Frames.Streamly.ColumnTypeable as FStreamly
+import qualified Frames.Streamly.ColumnUniverse as FStreamly
 import qualified Frames.Streamly.OrMissing as FStreamly
+import qualified Frames.Streamly.Streaming.Pipes as StreamP
+import qualified Frames.Streamly.Streaming.Streamly as StreamS
 import qualified Data.Set as Set
 import qualified Data.Map as Map
-import qualified  Data.Text as T
+import qualified Data.Text as T
+import qualified Data.Vinyl as V
 import qualified Frames
 import qualified Frames.TH as Frames
 
@@ -42,12 +51,23 @@ ffRowGen = (Frames.rowGen (thPath forestFiresPath)) { Frames.rowTypeName = "FF" 
 ffNewRowGen :: FStreamly.RowGen FStreamly.DefaultStream 'FStreamly.ColumnByName Frames.CommonColumns
 ffNewRowGen = (FStreamly.rowGen (thPath forestFiresPath)) { FStreamly.rowTypeName = "FFNew" }
 
-ffColSubsetRowGen :: FStreamly.RowGen FStreamly.DefaultStream 'FStreamly.ColumnByName Frames.CommonColumns
-ffColSubsetRowGen = FStreamly.modifyColumnSelector modSelector rowGen
+ffNewRowGenP :: FilePath -> FStreamly.RowGen StreamP.PipeStream 'FStreamly.ColumnByName Frames.CommonColumns
+ffNewRowGenP fp = (FStreamly.rowGen (thPath forestFiresPath)) { FStreamly.rowTypeName = "FFNew"
+                                                              , FStreamly.lineReader = FStreamly.streamTokenized' @StreamP.PipeStream @IO fp FStreamly.defaultSep
+                                                              }
+
+ffNewRowGenS :: FilePath -> FStreamly.RowGen (StreamS.StreamlyStream StreamS.SerialT) 'FStreamly.ColumnByName Frames.CommonColumns
+ffNewRowGenS fp = (FStreamly.rowGen (thPath forestFiresPath))
+                  { FStreamly.rowTypeName = "FFNew"
+                  ,FStreamly.lineReader = FStreamly.streamTokenized' @(StreamS.StreamlyStream StreamS.SerialT) @IO fp FStreamly.defaultSep
+                  }
+
+ffColSubsetRowGen :: FilePath -> FStreamly.RowGen FStreamly.DefaultStream 'FStreamly.ColumnByName Frames.CommonColumns
+ffColSubsetRowGen fp = FStreamly.modifyColumnSelector modSelector rowGen
   where
     rowTypeName = "FFColSubset"
-    rowGen = (FStreamly.rowGen (thPath forestFiresPath)) { FStreamly.rowTypeName = rowTypeName }
-    modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
+    rowGen = (FStreamly.rowGen (thPath fp)) { FStreamly.rowTypeName = rowTypeName }
+    modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp"])
 
 data Mth = Jan | Feb | Mar | Apr | May | Jun | Jul | Aug | Sep | Oct | Nov | Dec deriving (Enum, Bounded)
 FStreamly.derivingOrMissingUnboxVectorFor'
@@ -71,6 +91,11 @@ parseMth "nov" = Right Nov
 parseMth "dec" = Right Dec
 parseMth x = Left x
 
+instance FStreamly.Parseable Mth where
+  parse t = case parseMth t of
+    Left _ -> mzero
+    Right p -> return $ FStreamly.Definitely p
+
 data DayOfWeek = Mon | Tue | Wed | Thu | Fri | Sat | Sun deriving (Enum, Bounded)
 FStreamly.derivingOrMissingUnboxVectorFor'
   (FStreamly.derivingUnbox  "DayOfWeek" [t|DayOfWeek -> Word8|] [e|fromIntegral . fromEnum|] [e|toEnum . fromIntegral|])
@@ -88,3 +113,28 @@ parseDayOfWeek "fri" = Right Fri
 parseDayOfWeek "sat" = Right Sat
 parseDayOfWeek "sun" = Right Sun
 parseDayOfWeek x = Left x
+
+instance FStreamly.Parseable DayOfWeek where
+  parse t = case parseDayOfWeek t of
+    Left _ -> mzero
+    Right p -> return $ FStreamly.Definitely p
+
+type ParsedCols = [Bool, Int, Double, Mth, DayOfWeek, Text]
+
+
+dayMonthColsParserHowRec :: FStreamly.ParseHowRec ParsedCols
+dayMonthColsParserHowRec = FStreamly.parseableParseHowRec
+{-  let pph = FStreamly.parseableParseHow
+  in pph
+     V.:& pph
+     V.:& pph
+     V.:& FStreamly.simpleParseHow (either (const Nothing) Just . parseMth)
+     V.:& FStreamly.simpleParseHow (either (const Nothing) Just . parseDayOfWeek)
+     V.:& pph
+     V.:& V.RNil
+-}
+ffInferTypedSubsetRG :: FilePath -> FStreamly.RowGen FStreamly.DefaultStream 'FStreamly.ColumnByName ParsedCols
+ffInferTypedSubsetRG fp = (ffColSubsetRowGen fp) { FStreamly.columnParsers = dayMonthColsParserHowRec
+                                                 , FStreamly.tablePrefix ="P"
+                                                 , FStreamly.rowTypeName = "FFInferTyped"
+                                                 }
