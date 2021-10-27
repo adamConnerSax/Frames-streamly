@@ -156,9 +156,9 @@ streamlyFolder step start = Streamly.fold (streamlyBuildFold step start id) . St
 {-# INLINABLE streamlyFolder #-}
 
 {-
-streamlyReadTextLines :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m Text
-streamlyReadTextLines = word8ToTextLines2 . streamWord8
-{-# INLINE streamlyReadTextLines #-}
+streamlyReadTextLines' :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m Text
+streamlyReadTextLines' = word8ToTextLines2 . streamWord8
+{-# INLINE streamlyReadTextLines' #-}
 
 streamWord8 :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m Word8
 streamWord8 =  Streamly.File.toBytes

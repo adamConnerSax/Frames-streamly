@@ -154,7 +154,7 @@ inferTypes :: forall s b a.(Streaming.StreamFunctionsIO s IO
 inferTypes FStreamly.RowGen{..} = do
   x ::  ([FStreamly.ColTypeInfo (FStreamly.ColType a)], FStreamly.ParseColumnSelector) <-
     Streaming.runSafe @s
-    $ FStreamly.readColHeaders columnParsers genColumnSelector lineReader
+    $ FStreamly.readColHeaders columnParsers genColumnSelector $ lineReader separator
   return ()
 
 inferTypesF :: FilePath -> IO ()

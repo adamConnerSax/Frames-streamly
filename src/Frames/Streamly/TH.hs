@@ -235,7 +235,7 @@ data RowGen (s :: (Type -> Type) -> Type -> Type) (b :: ColumnId) (a :: [Type]) 
          , isMissing :: Text -> Bool
            -- ^ Control what text is considered missing.
            -- Defaults to @isMissing t = null t || t == "NA"@
-         , lineReader :: s (IOSafe s IO) [Text]
+         , lineReader :: Text -> s (IOSafe s IO) [Text]
            -- ^ A producer of rows of ’T.Text’ values that were
            -- separated by a 'Separator' value.
          }
@@ -257,7 +257,7 @@ rowGen' fp = RowGen
   FSCU.parseableParseHowRec
   1000
   defaultIsMissing
-  (SCSV.streamTokenized' @s @IO fp SCSV.defaultSep)
+  (SCSV.streamTokenized' @s @IO fp)
 {-# INLINEABLE rowGen' #-}
 
 -- | A default 'RowGen'. This instructs the type inference engine to
@@ -291,7 +291,7 @@ rowGenCat' fp = RowGen
   FSCU.parseableParseHowRec
   1000
   defaultIsMissing
-  (SCSV.streamTokenized' @s @IO fp SCSV.defaultSep)
+  (SCSV.streamTokenized' @s @IO fp)
 {-# INLINEABLE rowGenCat' #-}
 
 -- | Like 'rowGen', but will also generate custom data types for
@@ -474,7 +474,7 @@ tableTypesText' :: forall s b a.StreamFunctionsIO s IO
                 => RowGen s b a
                 -> DecsQ
 tableTypesText' RowGen {..} = do
-  firstRow <- runIO $ runSafe @s $ colNamesP lineReader
+  firstRow <- runIO $ runSafe @s $ colNamesP $ lineReader separator
   let (allColStates, pch) = case genColumnSelector of
         ICSV.GenUsingHeader f _ ->
           let allHeaders = ICSV.HeaderText <$> firstRow
@@ -520,7 +520,7 @@ tableTypes' :: forall ts b s.
                , Show (ICSV.ColumnIdType b)
                , StreamFunctionsIO s IO)
             => RowGen s b ts -> DecsQ
-tableTypes' (RowGen {..}) = do
+tableTypes' RowGen {..} = do
   (typedCols, pch) <- runIO
                       $ runSafe @s
                       $ SCSV.readColHeaders columnParsers genColumnSelector lineSource :: Q ([SCSV.ColTypeInfo (FSCU.ColType ts)], ICSV.ParseColumnSelector)
@@ -537,7 +537,7 @@ tableTypes' (RowGen {..}) = do
   optsDec <- valD (varP optsName) (normalB $ lift opts) []
   return (recTy : optsTy : optsDec : colDecs)
   where lineSource :: s (IOSafe s IO) [Text]
-        lineSource = sTake inferencePrefix $ lineReader
+        lineSource = sTake inferencePrefix $ lineReader separator
         inferMaybe :: ICSV.OrMissingWhen -> FSCU.SomeMissing -> Bool
         inferMaybe mw sm = case mw of
           ICSV.NeverMissing -> False
