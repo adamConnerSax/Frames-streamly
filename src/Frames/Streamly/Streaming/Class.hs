@@ -41,6 +41,8 @@ class Monad m => StreamFunctions (s :: (Type -> Type) -> Type -> Type) (m :: Typ
   -- ^ Build a fold from (monadic) step, start and extract functions
   sMapFoldM :: forall a b c. (b -> m c) -> FoldType s m a b -> FoldType s m a c
   -- ^ map the output of a fold
+  sLMapFoldM :: forall a b c. (c -> m a) -> FoldType s m a b -> FoldType s m c b
+  -- ^ map the output of a fold
   sFold :: forall a b.FoldType s m a b -> s m a -> m b
   -- ^ run a fold on a stream
   sToList :: forall x. s m x -> m [x]
@@ -53,6 +55,7 @@ class (StreamFunctions s (IOSafe s m), MonadThrow (IOSafe s m), PrimMonad (IOSaf
   runSafe :: forall a.IOSafe s m a ->  m a
   sReadTextLines :: FilePath -> s (IOSafe s m) Text
   -- ^ create a stream of lines of text by reading the given file
+  sReadProcessAndFold :: FilePath -> (s (IOSafe s m) Text -> s (IOSafe s m) x) -> FoldType s (IOSafe s m) x b -> (IOSafe s m) b
   sWriteTextLines :: FilePath -> s (IOSafe s m) Text -> m ()
     -- ^ streamly version handles invalid characters
 

@@ -48,7 +48,6 @@ import qualified Frames.InCore                          as Frames
 import           Frames.InCore                           (VectorFor, VectorMFor, VectorMs, Vectors, RecVec(..), toAoS)
 
 import Frames.Streamly.Streaming.Class (StreamFunctions(..)) --, FoldType)
-
 import qualified Control.Monad.Primitive                as Prim
 
 import qualified Data.Vinyl                             as Vinyl

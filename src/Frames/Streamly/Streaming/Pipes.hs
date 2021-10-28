@@ -55,6 +55,7 @@ instance Monad m => StreamFunctions PipeStream m where
   sBuildFold = pipesBuildFold
   sBuildFoldM = pipesBuildFoldM
   sMapFoldM = pipesPostMapM
+  sLMapFoldM = Foldl.premapM
   sFold fld  = Foldl.impurely Pipes.foldM fld . producer
   sToList = Pipes.toListM . producer -- this might be bad (not lazy) compared to streamly
   sFromFoldable = PipeStream . pipesFromFoldable
@@ -73,6 +74,7 @@ instance Monad m => StreamFunctions PipeStream m where
   {-# INLINEABLE sBuildFold #-}
   {-# INLINEABLE sBuildFoldM #-}
   {-# INLINEABLE sMapFoldM #-}
+  {-# INLINEABLE sLMapFoldM #-}
   {-# INLINEABLE sFold #-}
   {-# INLINEABLE sToList #-}
   {-# INLINEABLE sFromFoldable #-}
@@ -82,12 +84,18 @@ instance (Monad m, MonadThrow m, PSafe.MonadMask m, MonadIO m, Foldl.PrimMonad (
   type IOSafe PipeStream m = PSafe.SafeT m
   runSafe = PSafe.runSafeT
   sReadTextLines = PipeStream . PText.readFileLn
+  sReadProcessAndFold fp f = pipestreamReadProcessAndFold fp (producer . f . PipeStream)
   sWriteTextLines fp s = PSafe.runSafeT $ Pipes.runEffect $ (producer s) Pipes.>-> PText.writeFileLn fp
 
   {-# INLINE runSafe #-}
   {-# INLINEABLE sReadTextLines #-}
+  {-# INLINEABLE sReadProcessAndFold #-}
   {-# INLINEABLE sWriteTextLines #-}
 
+
+pipestreamReadProcessAndFold :: MonadSafe m => FilePath -> (Pipes.Producer Text m () -> Pipes.Producer x m ()) -> Foldl.FoldM m x b -> m b
+pipestreamReadProcessAndFold fp f fld = Foldl.impurely Pipes.foldM fld $ f $ PText.readFileLn fp
+{-# INLINE pipestreamReadProcessAndFold #-}
 
 -- These don't work and I'm not sure why.  Doen right, they should be faster than the versions above.
 {-
