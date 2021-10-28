@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -24,15 +25,16 @@ import           Control.Monad.Catch                     ( MonadThrow(..), Monad
 import Control.Foldl (PrimMonad)
 import Control.Exception (try)
 import qualified Control.Monad.Trans.Control as MC
---import Data.ByteString.Internal (w2c)
+import Data.ByteString.Internal (w2c)
+import Data.DList as DL
 import qualified Data.Text as T
 --import qualified Data.Text.Encoding as Text
 --import qualified Text.Builder as TB
---import Data.Word8 (_lf)
+import Data.Word8 (_lf)
 import qualified Streamly.Prelude                       as Streamly
 import qualified Streamly.Data.Fold                     as Streamly.Fold
 import qualified Streamly.Internal.FileSystem.File      as Streamly.File
---import qualified Streamly.Internal.FileSystem.Handle    as Streamly.Handle
+import qualified Streamly.Internal.FileSystem.Handle    as Streamly.Handle
 import qualified Streamly.Internal.Data.Unfold          as Streamly.Unfold
 --import qualified Streamly.External.ByteString as Streamly.BS
 
@@ -40,9 +42,10 @@ import qualified Streamly.Internal.Data.Unfold          as Streamly.Unfold
 import Streamly.Prelude                       (IsStream, SerialT)
 --import qualified Streamly.Internal.Unicode.Array.Char as Streamly.Unicode.Array
 --import qualified Streamly.Data.Array.Foreign as Streamly.Array
---import qualified Streamly.Internal.Data.Unfold as Streamly.Unfold
 import qualified Streamly.Unicode.Stream           as Streamly.Unicode
---import qualified Streamly.Internal.Data.Fold.Type as Streamly.Fold
+import qualified Streamly.Internal.Data.Array.Foreign.Type as F
+import qualified Streamly.Internal.Data.Array.Foreign.Mut.Type as FM
+import qualified Streamly.Internal.Data.Fold.Type as Streamly.Fold
 --import qualified Streamly.Internal.Data.Parser as Streamly.Parser
 --import qualified Streamly.Internal.Data.Parser.ParserD as ParserD
 --import qualified Streamly.Internal.Data.Stream.IsStream.Reduce as Reduce
@@ -167,10 +170,32 @@ streamlyUnfoldTextLn = Streamly.Unfold.unfoldrM f where
       Right t -> return $ Just (t, h)
 {-# INLINE streamlyUnfoldTextLn #-}
 
-streamlyReadTextLines :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => (IO.Handle -> t m Text) -> FilePath -> t m Text
+readTextLinesRaw :: (IsStream t, MonadIO m) => IO.Handle -> t m Text
+readTextLinesRaw = Streamly.foldMany lineFold . Streamly.unfoldMany read' . fileStream where
+  fileStream = Streamly.unfold Streamly.Handle.readChunks
+{-# INLINE readTextLinesRaw #-}
+
+read' :: MonadIO m => Streamly.Unfold.Unfold m (F.Array Word8) Word8
+read' = Streamly.Unfold.lmap F.unsafeThaw FM.read
+{-# INLINE [0] read' #-}
+
+lineFold :: Applicative m => Streamly.Fold.Fold m Word8 Text
+lineFold = Streamly.Fold.Fold step initial extract
+  where
+    dlToText = T.pack . fmap w2c . DL.toList
+    initial = pure $ Streamly.Fold.Partial DL.empty
+    step !s !a
+      | a == _lf = pure $ Streamly.Fold.Done $ dlToText s
+      | otherwise = pure $ Streamly.Fold.Partial (DL.snoc s a)
+    extract !s = pure $ dlToText s
+{-# INLINE [2] lineFold #-}
+
+streamlyReadTextLines :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m)
+                      => (IO.Handle -> t m Text) -> FilePath -> t m Text
 streamlyReadTextLines f fp = Streamly.bracket (liftIO $ IO.openFile fp IO.ReadMode) (liftIO . IO.hClose) f
 --                           $ Streamly.unfold streamlyUnfoldTextLn
 {-# INLINE streamlyReadTextLines #-}
+
 
 withFileLifted :: MC.MonadBaseControl IO m => FilePath -> IOMode -> (Handle -> m a) -> m a
 withFileLifted file mode action = MC.liftBaseWith (\runInBase -> withFile file mode (runInBase . action)) >>= MC.restoreM
