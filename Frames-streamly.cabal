@@ -141,7 +141,7 @@ benchmark bench-frames-streamly
     ghc-options: -fforce-recomp -fplugin=DumpCore -fplugin-opt DumpCore:core-html
   type:                exitcode-stdio-1.0
   hs-source-dirs:      bench
-  other-modules: Paths
+  other-modules: Paths Paths_Frames_streamly
   ghc-options:         -O2 -fspec-constr-recursive=16 -fmax-worker-args=16 -funbox-strict-fields
   main-is:             Bench.hs
   build-depends:       base

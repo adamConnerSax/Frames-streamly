@@ -75,14 +75,24 @@ loadAndTransform n = do
     $ FStreamly.readTableOpt @_ @s @IO fFNewParser forestFiresPath
   return $ fLength forestFires'
 
-loadAndTransform2 :: forall s. Streaming.StreamFunctionsIO s IO => Int -> IO Int
-loadAndTransform2 n = do
+loadInCore :: forall s. Streaming.StreamFunctionsIO s IO => Int -> IO Int
+loadInCore n = do
   let fLength = FL.fold FL.length
   forestFiresPathPrefix <- Paths.usePath Paths.forestFiresPrefix
   let forestFiresPath = forestFiresPathPrefix <> show n <> ".csv"
   forestFires' :: Frames.FrameRec [MthC, DayC, X, Y, AX]  <-
     Streaming.runSafe @s $ FStreamly.loadInCore @s @IO fFNewParser forestFiresPath (either (const Nothing) Just . transform)
   return $ fLength forestFires'
+
+loadInCore2 :: forall s. Streaming.StreamFunctionsIO s IO => Int -> IO Int
+loadInCore2 n = do
+  let fLength = FL.fold FL.length
+  forestFiresPathPrefix <- Paths.usePath Paths.forestFiresPrefix
+  let forestFiresPath = forestFiresPathPrefix <> show n <> ".csv"
+  forestFires' :: Frames.FrameRec [MthC, DayC, X, Y, AX]  <-
+    Streaming.runSafe @s $ FStreamly.loadInCore2 @s @IO fFNewParser forestFiresPath (either (const Nothing) Just . transform)
+  return $ fLength forestFires'
+
 
 loadAndTransformF :: Int -> IO Int
 loadAndTransformF n = do
@@ -187,8 +197,8 @@ main = do
                                     , bench "Streamly" $ nfIO (loadAndTransform @(StreamS.StreamlyStream StreamS.SerialT) 500)
                                     , bench "Frames" $ nfIO (loadAndTransformF 500)
                               ]
--}
 
+-}
     bgroup "inference (1000/5000)" [ bench "Pipes" $ nfIO (inferTypes $ ffNewRowGenP fp5000)
                                    , bench "Streamly" $ nfIO (inferTypes $ ffNewRowGenS fp5000)
                                    , bench "Frames" $ nfIO $ inferTypesF fp5000
@@ -206,9 +216,12 @@ main = do
                                        , bench "Streamly" $ nfIO (loadAndTransform @(StreamS.StreamlyStream StreamS.SerialT) 5000)
                                        , bench "Frames" $ nfIO (loadAndTransformF 5000)
                                        ]
-    , bgroup "loadAndTransform2 (5000)" [ bench "Pipes" $ nfIO (loadAndTransform2 @StreamP.PipeStream 5000)
-                                        , bench "Streamly" $ nfIO (loadAndTransform2 @(StreamS.StreamlyStream StreamS.SerialT) 5000)
-                                        ]
+    , bgroup "loadInCore (5000)" [ bench "Pipes" $ nfIO (loadInCore @StreamP.PipeStream 5000)
+                                 , bench "Streamly" $ nfIO (loadInCore @(StreamS.StreamlyStream StreamS.SerialT) 5000)
+                                 ]
+    , bgroup "loadInCore2 (5000)" [ bench "Pipes" $ nfIO (loadInCore2 @StreamP.PipeStream 5000)
+                                  , bench "Streamly" $ nfIO (loadInCore2 @(StreamS.StreamlyStream StreamS.SerialT) 5000)
+                                  ]
 {-
   , bgroup "loadAndCountRecs (50000)" [ bench "Pipes" $ nfIO (loadAndCountRecs @StreamP.PipeStream 50000)
                                   , bench "Streamly" $ nfIO (loadAndCountRecs @(StreamS.StreamlyStream StreamS.SerialT) 50000)
@@ -245,6 +258,7 @@ main = do
 -- | Create a record with one field from a value.  Use a TypeApplication to choose the field.
 recordSingleton :: forall af s a. (KnownSymbol s, af ~ '(s,a)) => a -> Frames.Record '[af]
 recordSingleton a = a Frames.&: V.RNil
+{-# INLINE recordSingleton #-}
 
 type AX = "AX" Frames.:-> Double
 
@@ -254,3 +268,4 @@ transform r = do
   day <- fmap (recordSingleton @DayC) . parseDayOfWeek $ Frames.rgetField @Day r
   mth <- fmap (recordSingleton @MthC) . parseMth $  Frames.rgetField @Month r
   return $ Frames.rcast $ r V.<+> ax V.<+> day V.<+> mth
+{-# INLINEABLE transform #-}

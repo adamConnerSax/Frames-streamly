@@ -25,10 +25,11 @@ import           Control.Monad.Catch                     ( MonadThrow(..), Monad
 import Control.Foldl (PrimMonad)
 import Control.Exception (try)
 import qualified Control.Monad.Trans.Control as MC
+import qualified Data.ByteString.Lazy as BL
 import Data.ByteString.Internal (w2c)
 import Data.DList as DL
 import qualified Data.Text as T
---import qualified Data.Text.Encoding as Text
+import qualified Data.Text.Encoding as Text
 --import qualified Text.Builder as TB
 import Data.Word8 (_lf)
 import qualified Streamly.Prelude                       as Streamly
@@ -46,6 +47,9 @@ import qualified Streamly.Unicode.Stream           as Streamly.Unicode
 import qualified Streamly.Internal.Data.Array.Foreign.Type as F
 import qualified Streamly.Internal.Data.Array.Foreign.Mut.Type as FM
 import qualified Streamly.Internal.Data.Fold.Type as Streamly.Fold
+import qualified Streamly.Internal.Data.Stream.StreamD.Generate as StreamD
+import qualified Streamly.Internal.Data.Stream.StreamD.Type as StreamD
+import qualified Streamly.Internal.Data.Stream.StreamD.Transform as StreamD
 --import qualified Streamly.Internal.Data.Parser as Streamly.Parser
 --import qualified Streamly.Internal.Data.Parser.ParserD as ParserD
 --import qualified Streamly.Internal.Data.Stream.IsStream.Reduce as Reduce
@@ -111,7 +115,7 @@ instance (IsStream t, Monad m) => StreamFunctions (StreamlyStream t) m where
 instance (IsStream t, Streamly.MonadAsync m, MonadCatch m, PrimMonad m) => StreamFunctionsIO (StreamlyStream t) m where
   type IOSafe (StreamlyStream t) m = m
   runSafe = id
-  sReadTextLines = StreamlyStream . streamlyReadTextLines (Streamly.unfold streamlyUnfoldTextLn)
+  sReadTextLines = StreamlyStream . streamlyReadTextLines (Streamly.unfold unfoldViaBS)
   sReadScanMAndFold = streamlyReadScanMAndFold
   sWriteTextLines fp = streamlyWriteTextLines fp . stream
 
@@ -198,12 +202,12 @@ streamlyReadTextLines f fp = Streamly.bracket (liftIO $ IO.openFile fp IO.ReadMo
 
 withFileLifted :: MC.MonadBaseControl IO m => FilePath -> IOMode -> (Handle -> m a) -> m a
 withFileLifted file mode action = MC.liftBaseWith (\runInBase -> withFile file mode (runInBase . action)) >>= MC.restoreM
-{-# INLINE withFileLifted #-}
+{-# INLINEABLE withFileLifted #-}
 
 streamlyReadScanMAndFold :: Streamly.MonadAsync m => FilePath -> (x -> Text -> m x) -> m x -> Streamly.Fold.Fold m x b -> m b
 streamlyReadScanMAndFold fp scanStep scanStart fld = withFileLifted fp IO.ReadMode
-  $ Streamly.fold fld . Streamly.scanlM' scanStep scanStart . Streamly.unfold streamlyUnfoldTextLn
-{-# INLINE streamlyReadScanMAndFold #-}
+  $ StreamD.fold fld . StreamD.scanlM' scanStep scanStart . StreamD.unfold streamlyUnfoldTextLn
+{-# INLINEABLE streamlyReadScanMAndFold #-}
 
 streamlyThrowIfEmpty :: (IsStream t, MonadThrow m) => t m a -> m ()
 streamlyThrowIfEmpty s = Streamly.null (Streamly.adapt s) >>= flip when (throwM EmptyStreamException)
@@ -212,6 +216,39 @@ streamlyThrowIfEmpty s = Streamly.null (Streamly.adapt s) >>= flip when (throwM 
 streamlyFolder :: (IsStream t, Monad m) => (x -> a -> x) -> x -> t m a -> m x
 streamlyFolder step start = Streamly.fold (streamlyBuildFold step start id) . Streamly.adapt
 {-# INLINABLE streamlyFolder #-}
+
+lines :: BL.ByteString -> DL.DList (BL.ByteString)
+lines = DL.unfoldr inner
+  where
+    {-# INLINE inner #-}
+    inner input'
+      | BL.null input' = Nothing
+      | otherwise =
+          case BL.elemIndex _lf input' of
+            Nothing -> Just (input', BL.empty)
+            Just i ->
+              let (prefix, suffix) = BL.splitAt i input'
+              in Just (prefix, BL.drop 1 suffix)
+{-# INLINE lines #-}
+
+unfoldViaBS' :: Applicative m => Streamly.Unfold.Unfold m BL.ByteString BL.ByteString
+unfoldViaBS' = Streamly.Unfold.unfoldr inner
+  where
+    {-# INLINE inner #-}
+    inner input'
+      | BL.null input' = Nothing
+      | otherwise =
+          case BL.elemIndex _lf input' of
+            Nothing -> Just (input', BL.empty)
+            Just i ->
+              let (prefix, suffix) = BL.splitAt i input'
+              in Just (prefix, BL.drop 1 suffix)
+{-# INLINE unfoldViaBS' #-}
+
+unfoldViaBS :: MonadIO m => Streamly.Unfold.Unfold m IO.Handle Text
+unfoldViaBS = fmap (Text.decodeUtf8 . BL.toStrict) $ Streamly.Unfold.lmapM (liftIO . BL.hGetContents) unfoldViaBS'
+{-# INLINE unfoldViaBS #-}
+
 
 {-
 streamlyReadTextLines' :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m Text

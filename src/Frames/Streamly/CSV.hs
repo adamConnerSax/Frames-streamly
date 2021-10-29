@@ -531,7 +531,7 @@ accToMaybe AccInitial = Nothing
 accToMaybe (AccResult _ smb) = case smb of
   Strict.Nothing -> Nothing
   Strict.Just x -> Just x
-{-# INLINE accToMaybe #-}
+{-# INLINEABLE accToMaybe #-}
 
 -- | Various parsing options have to handle the header line, if it exists,
 -- differently.  This function pulls all that logic into one place.
@@ -590,7 +590,7 @@ parsingScanF opts pF sta t = case sta of
     let res = if dropFirst then Strict.Nothing else pF rF t
     return $ AccResult rF res
   AccResult rF _ -> return $ AccResult rF $ pF rF t
-{-# INLINE parsingScanF #-}
+{-# INLINEABLE parsingScanF #-}
 
 -- | Convert a stream of lines of `Text` to records.
 -- Each field is returned in an @Either Text@ functor. @Right a@ for successful parses
@@ -715,12 +715,14 @@ word8ToTextLines2 =  Streamly.map (toText . Streamly.Array.toList)
 {-# INLINE word8ToTextLines2 #-}
 -}
 -- | Parse list of text into @Rec (Either :. ElField)@ using strict @Either@
+-- Don't make this INLINE!! GHC 8.10.7 goes on forever...
 class StrictReadRec rs where
   strictReadRec :: [Text] -> V.Rec (Strict.Either Text V.:. V.ElField) rs
 
 instance StrictReadRec '[] where
   strictReadRec _ = V.RNil
   {-# INLINEABLE strictReadRec #-}
+-- Don't make this INLINE!! GHC 8.10.7 goes on forever.   INLINABLE seems okay
 
 instance (FSCT.Parseable t, StrictReadRec ts, KnownSymbol s) => StrictReadRec (s Frames.:-> t ': ts) where
   -- This one is neccesary to avoid a warning about incomplete pattern matches. ??
@@ -732,13 +734,14 @@ instance (FSCT.Parseable t, StrictReadRec ts, KnownSymbol s) => StrictReadRec (s
                            (FSCT.parse' h)
                            V.:& strictReadRec t
   {-# INLINEABLE strictReadRec #-}
+-- Don't make this INLINE!! GHC 8.10.7 goes on forever.
 
--- TH Support
 useRowFilter :: Maybe [Bool] -> [Text] -> [Text]
 useRowFilter = maybe id f  where
   f bs xs = snd <$> filter fst (zip bs xs)
 {-# INLINEABLE useRowFilter #-}
 
+-- for TH inference
 prefixInference :: forall a s m.(MonadThrow m
                                 , Monad m
                                 , StreamFunctions s m

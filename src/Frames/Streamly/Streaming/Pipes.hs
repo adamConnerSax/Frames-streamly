@@ -24,18 +24,18 @@ import Frames.Streamly.Internal.CSV (FramesCSVException(..))
 import qualified Pipes
 import Pipes ((>->))
 import qualified Pipes.Prelude as Pipes
+import qualified Pipes.Safe.Prelude as PSafe
 import qualified Pipes.Safe as PSafe
---import qualified Pipes.Safe.Prelude as PSafe
 import Pipes.Safe (MonadSafe, SafeT, runSafeT)
 import qualified Pipes.Prelude.Text as PText
---import qualified Pipes.Text.Encoding as PText
---import qualified Pipes.ByteString as PBS
---import qualified System.IO as IO
+import qualified System.IO as IO
 import qualified Control.Foldl as Foldl
 import           Control.Monad.Catch                     ( MonadThrow(..))
 import Data.Maybe (fromJust)
+import qualified Data.ByteString.Lazy as BL
 --import Control.Monad.IO.Class (MonadIO(..))
---import qualified Data.Text as T
+import qualified Data.Text.Encoding as Text
+import Data.Word8 (_lf)
 
 newtype PipeStream m a = PipeStream { producer :: Pipes.Producer a m () }
 
@@ -84,7 +84,8 @@ instance Monad m => StreamFunctions PipeStream m where
 instance (Monad m, MonadThrow m, PSafe.MonadMask m, MonadIO m, Foldl.PrimMonad (PSafe.SafeT m)) => StreamFunctionsIO PipeStream m where
   type IOSafe PipeStream m = PSafe.SafeT m
   runSafe = PSafe.runSafeT
-  sReadTextLines = PipeStream . PText.readFileLn
+--  sReadTextLines = PipeStream . PText.readFileLn
+  sReadTextLines fp = PipeStream $ PSafe.withFile fp IO.ReadMode unfoldViaBS
   sReadScanMAndFold = pipestreamReadScanMAndFold
   sWriteTextLines fp s = PSafe.runSafeT $ Pipes.runEffect $ (producer s) Pipes.>-> PText.writeFileLn fp
 
@@ -101,19 +102,6 @@ pipestreamReadScanMAndFold fp scanStep scanStart fld = Foldl.impurely Pipes.fold
 pipesFoldMaybe :: Monad m => Foldl.FoldM m a b -> Foldl.FoldM m (Maybe a) b
 pipesFoldMaybe = Foldl.prefilterM (return . isJust) . Foldl.premapM (return . fromJust)
 
--- These don't work and I'm not sure why.  Doen right, they should be faster than the versions above.
-{-
-pipesReadTextLines :: (MonadIO m, PSafe.MonadSafe m) => FilePath -> Pipes.Producer Text m ()
-pipesReadTextLines fp =
-  PSafe.withFile fp IO.ReadMode $ void . PText.decodeUtf32BE . PBS.fromHandle
-{-# INLINABLE pipesReadTextLines #-}
-
-
-pipesWriteTextLines :: (MonadIO m, PSafe.MonadSafe m) => FilePath -> Pipes.Producer Text m () -> m ()
-pipesWriteTextLines fp s = PSafe.withFile fp IO.WriteMode $ \h -> do
-  Pipes.runEffect $ Pipes.for s PText.encodeUtf8 Pipes.>-> PBS.toHandle h
-{-# INLINABLE pipesWriteTextLines #-}
--}
 
 pipesPostMapM :: Monad m => (b -> m c) -> Foldl.FoldM m a b -> Foldl.FoldM m a c
 pipesPostMapM f (Foldl.FoldM step begin done) = Foldl.FoldM step begin done'
@@ -148,25 +136,22 @@ pipeStreamUncons p = do
     Right (a, s) -> return $ Just (a, PipeStream s)
 {-# INLINABLE pipeStreamUncons #-}
 
+unfoldViaBS' :: Monad m => BL.ByteString -> Pipes.Producer BL.ByteString m ()
+unfoldViaBS' = Pipes.unfoldr inner
+  where
+    {-# INLINE inner #-}
+    inner input'
+      | BL.null input' = pure $ Left ()
+      | otherwise =
+          case BL.elemIndex _lf input' of
+            Nothing -> pure $ Right (input', BL.empty)
+            Just i ->
+              let (prefix, suffix) = BL.splitAt i input'
+              in pure $ Right (prefix, BL.drop 1 suffix)
+{-# INLINE unfoldViaBS' #-}
 
-{-
-pipesFunctions :: (MonadThrow m, Monad m) => StreamFunctions PipeStream m
-pipesFunctions = StreamFunctions
-  (pipesThrowIfEmpty . producer)
-  (\a s -> PipeStream $ Pipes.yield a >> producer s)
-  pipeStreamUncons
-  (Pipes.head . producer)
-  (\f s -> PipeStream $ producer s >-> Pipes.map f)
-  (\f s -> PipeStream $  producer s >-> Pipes.mapMaybe f)
-  (\step start s -> PipeStream $ producer s >-> Pipes.scanM step start return)
-  (\n s -> PipeStream $ producer s >-> Pipes.drop n)
-  (\n s -> PipeStream $ producer s >-> Pipes.take n)
-  (\step start -> pipesFolder step start . producer)
-  pipesBuildFold
-  pipesBuildFoldM
-  pipesPostMapM
-  (\fld s -> Foldl.impurely Pipes.foldM fld $ producer s)
-  (Pipes.toListM . producer) -- this might be bad (not lazy) compared to streamly.
-  (PipeStream . pipesFromFoldable)
-{-# INLINEABLE pipesFunctions #-}
--}
+unfoldViaBS :: MonadIO m => IO.Handle -> Pipes.Producer Text m ()
+unfoldViaBS h = do
+  lbs <- Pipes.lift $ liftIO $ BL.hGetContents h
+  unfoldViaBS' lbs >-> Pipes.map (Text.decodeUtf8 . BL.toStrict)
+{-# INLINE unfoldViaBS #-}

@@ -60,8 +60,8 @@ where
 
 import Prelude hiding (lift)
 
-import Frames.Streamly.Streaming.Streamly (StreamlyStream(..), SerialT)
-import Frames.Streamly.Streaming.Pipes (PipeStream(..))
+import Frames.Streamly.Streaming.Streamly (StreamlyStream, SerialT)
+import Frames.Streamly.Streaming.Pipes (PipeStream)
 import Frames.Streamly.Streaming.Class
 import qualified Frames.Streamly.CSV as SCSV
 import Frames.Streamly.CSV (ParserOptions(..), defaultSep) -- for re-export or TH
@@ -88,8 +88,8 @@ import qualified Language.Haskell.TH as TH (Type)
 import Language.Haskell.TH.Syntax hiding (Type)
 
 
-type DefaultStream = StreamlyStream SerialT
---type DefaultStream = PipeStream
+--type DefaultStream = StreamlyStream SerialT
+type DefaultStream = PipeStream
 
 
 -- | Generate a column type.
