@@ -531,6 +531,7 @@ accToMaybe AccInitial = Nothing
 accToMaybe (AccResult _ smb) = case smb of
   Strict.Nothing -> Nothing
   Strict.Just x -> Just x
+{-# INLINE accToMaybe #-}
 
 -- | Various parsing options have to handle the header line, if it exists,
 -- differently.  This function pulls all that logic into one place.
@@ -589,6 +590,7 @@ parsingScanF opts pF sta t = case sta of
     let res = if dropFirst then Strict.Nothing else pF rF t
     return $ AccResult rF res
   AccResult rF _ -> return $ AccResult rF $ pF rF t
+{-# INLINE parsingScanF #-}
 
 -- | Convert a stream of lines of `Text` to records.
 -- Each field is returned in an @Either Text@ functor. @Right a@ for successful parses
@@ -605,10 +607,10 @@ streamTableEitherOpt
     => ParserOptions -- ^ parsing options
     -> s m T.Text -- ^ stream of 'Text' rows
     -> s m (Vinyl.Rec ((Either T.Text) Vinyl.:. Vinyl.ElField) rs)  -- ^ stream of parsed @Either :. ElField@ rows
-streamTableEitherOpt opts = sMapMaybe accToMaybe . sScanM (parsingScanF opts parseOne) (return AccInitial)
+streamTableEitherOpt opts = sMapMaybe accToMaybe . sScanM (parsingScanF opts parseOne') (return AccInitial)
   where
-    parseOne :: Maybe [Bool] -> Text -> Strict.Maybe (Vinyl.Rec ((Either T.Text) Vinyl.:. Vinyl.ElField) rs)
-    parseOne rF = Strict.Just . recUnStrictEither . parse . useRowFilter rF . Frames.tokenizeRow (framesParserOptionsForTokenizing opts)
+    parseOne' :: Maybe [Bool] -> Text -> Strict.Maybe (Vinyl.Rec ((Either T.Text) Vinyl.:. Vinyl.ElField) rs)
+    parseOne' rF = Strict.Just . recUnStrictEither . parse . useRowFilter rF . Frames.tokenizeRow (framesParserOptionsForTokenizing opts)
     parse = strictReadRec
 {-# INLINEABLE streamTableEitherOpt #-}
 
@@ -680,12 +682,12 @@ parseOne :: (V.RMap rs
             )
          => ParserOptions -> Maybe [Bool] -> Text -> Strict.Maybe (Frames.Record rs)
 parseOne opts rF t = maybe Strict.Nothing Strict.Just $! Frames.recMaybe $! doParseStrict $! useRowFilter rF $! Frames.tokenizeRow (framesParserOptionsForTokenizing opts) t
-{-# INLINEABLE parseOne #-}
+{-# INLINE parseOne #-}
 
 -- | Parse using StrictReadRec
 doParseStrict :: (V.RMap rs, StrictReadRec rs) => [Text] -> V.Rec (Maybe V.:. V.ElField) rs
 doParseStrict !x = recStrictEitherToMaybe $! strictReadRec x
-{-# INLINEABLE doParseStrict #-}
+{-# INLINE doParseStrict #-}
 
 
 recEitherToMaybe :: Vinyl.RMap rs => Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs -> Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs

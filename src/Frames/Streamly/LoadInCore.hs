@@ -12,7 +12,7 @@ Stability   : experimental
 -}
 module Frames.Streamly.LoadInCore
     (
-
+      loadInCore
     )
 where
 
@@ -30,3 +30,4 @@ loadInCore po fp t = sReadScanMAndFold @s @m fp (FS.parsingScanF po $ FS.parseOn
   fromScan x = FS.accToMaybe x >>= t
   fld :: FoldType s (IOSafe s m) (FS.Acc (Frames.Record rs)) (Frames.FrameRec rs')
   fld = sLMapFoldM @s (return . fromScan) $ sFoldMaybe @s (FS.inCoreAoS_F @_ @s @(IOSafe s m))
+{-# INLINEABLE loadInCore #-}
