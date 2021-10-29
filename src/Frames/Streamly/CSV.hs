@@ -101,6 +101,11 @@ module Frames.Streamly.CSV
     , FramesCSVException(..)
     , ParseColumnSelector
     , ColumnIdType
+      -- * Parsing scan
+    , Acc(..)
+    , accToMaybe
+    , parsingScanF
+    , parseOne
     )
 where
 
@@ -667,11 +672,15 @@ streamTableOpt
     => ParserOptions -- ^ parsing options
     -> s m T.Text  -- ^ stream of 'Text' rows
     -> s m (Frames.Record rs) -- ^ stream of Records
-streamTableOpt opts = sMapMaybe accToMaybe . sScanM (parsingScanF opts parseOne) (return AccInitial)
-  where
-    parseOne :: Maybe [Bool] -> Text -> Strict.Maybe (Frames.Record rs)
-    parseOne rF t = maybe Strict.Nothing Strict.Just $! Frames.recMaybe $! doParseStrict $! useRowFilter rF $! Frames.tokenizeRow (framesParserOptionsForTokenizing opts) t
+streamTableOpt opts = sMapMaybe accToMaybe . sScanM (parsingScanF opts $ parseOne opts) (return AccInitial)
 {-# INLINEABLE streamTableOpt #-}
+
+parseOne :: (V.RMap rs
+            , StrictReadRec rs
+            )
+         => ParserOptions -> Maybe [Bool] -> Text -> Strict.Maybe (Frames.Record rs)
+parseOne opts rF t = maybe Strict.Nothing Strict.Just $! Frames.recMaybe $! doParseStrict $! useRowFilter rF $! Frames.tokenizeRow (framesParserOptionsForTokenizing opts) t
+{-# INLINEABLE parseOne #-}
 
 -- | Parse using StrictReadRec
 doParseStrict :: (V.RMap rs, StrictReadRec rs) => [Text] -> V.Rec (Maybe V.:. V.ElField) rs

@@ -83,6 +83,7 @@ instance (IsStream t, Monad m) => StreamFunctions (StreamlyStream t) m where
   sBuildFoldM = streamlyBuildFoldM
   sMapFoldM = Streamly.Fold.rmapM
   sLMapFoldM = Streamly.Fold.lmapM
+  sFoldMaybe = Streamly.Fold.catMaybes
   sFold fld  = Streamly.fold fld . Streamly.adapt . stream
   sToList = Streamly.toList . Streamly.adapt . stream -- this might be bad (not lazy) compared to streamly
   sFromFoldable = StreamlyStream . Streamly.fromFoldable
@@ -102,6 +103,7 @@ instance (IsStream t, Monad m) => StreamFunctions (StreamlyStream t) m where
   {-# INLINEABLE sBuildFoldM #-}
   {-# INLINEABLE sMapFoldM #-}
   {-# INLINEABLE sLMapFoldM #-}
+  {-# INLINEABLE sFoldMaybe #-}
   {-# INLINEABLE sFold #-}
   {-# INLINEABLE sToList #-}
   {-# INLINEABLE sFromFoldable #-}
@@ -110,12 +112,12 @@ instance (IsStream t, Streamly.MonadAsync m, MonadCatch m, PrimMonad m) => Strea
   type IOSafe (StreamlyStream t) m = m
   runSafe = id
   sReadTextLines = StreamlyStream . streamlyReadTextLines (Streamly.unfold streamlyUnfoldTextLn)
-  sReadProcessAndFold fp p = streamlyReadProcessAndFold fp (stream . p . StreamlyStream)
+  sReadScanMAndFold = streamlyReadScanMAndFold
   sWriteTextLines fp = streamlyWriteTextLines fp . stream
 
   {-# INLINE runSafe #-}
   {-# INLINEABLE sReadTextLines #-}
-  {-# INLINEABLE sReadProcessAndFold #-}
+  {-# INLINEABLE sReadScanMAndFold #-}
   {-# INLINEABLE sWriteTextLines #-}
 
 streamlyStreamUncons :: (IsStream t, Monad m) => StreamlyStream t m a -> m (Maybe (a, StreamlyStream t m a))
@@ -125,7 +127,6 @@ streamlyStreamUncons s = do
     Nothing -> return Nothing
     Just (a, s') -> return $ Just (a, StreamlyStream s')
 {-# INLINABLE streamlyStreamUncons #-}
-
 
 streamlyBuildFold :: Monad m => (x -> a -> x) -> x -> (x -> b) -> Streamly.Fold.Fold m a b
 #if MIN_VERSION_streamly(0,8,0)
@@ -141,7 +142,6 @@ streamlyBuildFoldM step start extract = Streamly.Fold.rmapM  extract $ Streamly.
 streamlyBuildFoldM step start extract = Streamly.Fold.mkFold step start extract
 #endif
 
-
 streamlyWriteTextLines :: (IsStream s, Streamly.MonadAsync m, MonadCatch m) => FilePath -> s m Text -> m ()
 streamlyWriteTextLines fp s = do
 #if MIN_VERSION_streamly(0,8,0)
@@ -156,7 +156,6 @@ streamlyWriteTextLines fp s = do
     $ Streamly.map T.unpack
     $ Streamly.intersperse "\n" s
 {-# INLINEABLE streamlyWriteTextLines #-}
-
 
 -- Use Text to read a line at a time
 streamlyUnfoldTextLn :: MonadIO m => Streamly.Unfold.Unfold m IO.Handle Text
@@ -201,9 +200,10 @@ withFileLifted :: MC.MonadBaseControl IO m => FilePath -> IOMode -> (Handle -> m
 withFileLifted file mode action = MC.liftBaseWith (\runInBase -> withFile file mode (runInBase . action)) >>= MC.restoreM
 {-# INLINE withFileLifted #-}
 
-streamlyReadProcessAndFold :: IsStream t => Streamly.MonadAsync m => FilePath -> (t m Text -> t m x) -> Streamly.Fold.Fold m x b -> m b
-streamlyReadProcessAndFold fp process fld = withFileLifted fp IO.ReadMode
-  $ Streamly.fold fld . Streamly.adapt . process . Streamly.unfold streamlyUnfoldTextLn
+streamlyReadScanMAndFold :: Streamly.MonadAsync m => FilePath -> (x -> Text -> m x) -> m x -> Streamly.Fold.Fold m x b -> m b
+streamlyReadScanMAndFold fp scanStep scanStart fld = withFileLifted fp IO.ReadMode
+  $ Streamly.fold fld . Streamly.scanlM' scanStep scanStart . Streamly.unfold streamlyUnfoldTextLn
+{-# INLINE streamlyReadScanMAndFold #-}
 
 streamlyThrowIfEmpty :: (IsStream t, MonadThrow m) => t m a -> m ()
 streamlyThrowIfEmpty s = Streamly.null (Streamly.adapt s) >>= flip when (throwM EmptyStreamException)

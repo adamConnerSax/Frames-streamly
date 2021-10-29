@@ -33,7 +33,7 @@ import qualified Pipes.Prelude.Text as PText
 --import qualified System.IO as IO
 import qualified Control.Foldl as Foldl
 import           Control.Monad.Catch                     ( MonadThrow(..))
-
+import Data.Maybe (fromJust)
 --import Control.Monad.IO.Class (MonadIO(..))
 --import qualified Data.Text as T
 
@@ -56,6 +56,7 @@ instance Monad m => StreamFunctions PipeStream m where
   sBuildFoldM = pipesBuildFoldM
   sMapFoldM = pipesPostMapM
   sLMapFoldM = Foldl.premapM
+  sFoldMaybe = pipesFoldMaybe
   sFold fld  = Foldl.impurely Pipes.foldM fld . producer
   sToList = Pipes.toListM . producer -- this might be bad (not lazy) compared to streamly
   sFromFoldable = PipeStream . pipesFromFoldable
@@ -75,27 +76,30 @@ instance Monad m => StreamFunctions PipeStream m where
   {-# INLINEABLE sBuildFoldM #-}
   {-# INLINEABLE sMapFoldM #-}
   {-# INLINEABLE sLMapFoldM #-}
+  {-# INLINEABLE sFoldMaybe #-}
   {-# INLINEABLE sFold #-}
   {-# INLINEABLE sToList #-}
   {-# INLINEABLE sFromFoldable #-}
-
 
 instance (Monad m, MonadThrow m, PSafe.MonadMask m, MonadIO m, Foldl.PrimMonad (PSafe.SafeT m)) => StreamFunctionsIO PipeStream m where
   type IOSafe PipeStream m = PSafe.SafeT m
   runSafe = PSafe.runSafeT
   sReadTextLines = PipeStream . PText.readFileLn
-  sReadProcessAndFold fp f = pipestreamReadProcessAndFold fp (producer . f . PipeStream)
+  sReadScanMAndFold = pipestreamReadScanMAndFold
   sWriteTextLines fp s = PSafe.runSafeT $ Pipes.runEffect $ (producer s) Pipes.>-> PText.writeFileLn fp
 
   {-# INLINE runSafe #-}
   {-# INLINEABLE sReadTextLines #-}
-  {-# INLINEABLE sReadProcessAndFold #-}
+  {-# INLINEABLE sReadScanMAndFold #-}
   {-# INLINEABLE sWriteTextLines #-}
 
 
-pipestreamReadProcessAndFold :: MonadSafe m => FilePath -> (Pipes.Producer Text m () -> Pipes.Producer x m ()) -> Foldl.FoldM m x b -> m b
-pipestreamReadProcessAndFold fp f fld = Foldl.impurely Pipes.foldM fld $ f $ PText.readFileLn fp
-{-# INLINE pipestreamReadProcessAndFold #-}
+pipestreamReadScanMAndFold :: MonadSafe m => FilePath -> (x -> Text -> m x) -> m x -> Foldl.FoldM m x b -> m b
+pipestreamReadScanMAndFold fp scanStep scanStart fld = Foldl.impurely Pipes.foldM fld $ PText.readFileLn fp >-> Pipes.scanM scanStep scanStart return
+{-# INLINE pipestreamReadScanMAndFold #-}
+
+pipesFoldMaybe :: Monad m => Foldl.FoldM m a b -> Foldl.FoldM m (Maybe a) b
+pipesFoldMaybe = Foldl.prefilterM (return . isJust) . Foldl.premapM (return . fromJust)
 
 -- These don't work and I'm not sure why.  Doen right, they should be faster than the versions above.
 {-
