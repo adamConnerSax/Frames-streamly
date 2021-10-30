@@ -44,6 +44,7 @@ import Streamly.Prelude                       (IsStream, SerialT)
 --import qualified Streamly.Internal.Unicode.Array.Char as Streamly.Unicode.Array
 --import qualified Streamly.Data.Array.Foreign as Streamly.Array
 import qualified Streamly.Unicode.Stream           as Streamly.Unicode
+import qualified Streamly.Internal.Data.Array.Foreign as F
 import qualified Streamly.Internal.Data.Array.Foreign.Type as F
 import qualified Streamly.Internal.Data.Array.Foreign.Mut.Type as FM
 import qualified Streamly.Internal.Data.Array.Stream.Foreign as Streamly.Array
@@ -252,9 +253,17 @@ unfoldViaBS = fmap (Text.decodeUtf8 . BL.toStrict) $ Streamly.Unfold.lmapM (lift
 
 linesUsingSplitOn :: (IsStream t, MonadIO m) => IO.Handle -> t m Text
 linesUsingSplitOn h = Streamly.unfold Streamly.Handle.readChunks h
-                      & Streamly.Array.splitOn _lf
+                      & Streamly.Array.splitOnSuffix _lf
                       & Streamly.map (Text.decodeUtf8 . Streamly.BS.fromArray)
 {-# INLINE linesUsingSplitOn #-}
+{-
+tokenizedLines :: (IsStream t, MonadIO m) => Word8 -> IO.Handle -> t m Text
+tokenizedLines s h = Streamly.unfold Streamly.Handle.readChunks h
+                      & Streamly.Array.splitOnSuffix _lf
+                      & Streamly.filter (not . F.null)
+                      & Streamly.map (Text.decodeUtf8 . Streamly.BS.fromArray . S)
+{-# INLINE tokenizedLines #-}
+-}
 {-
 streamlyReadTextLines' :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m Text
 streamlyReadTextLines' = word8ToTextLines2 . streamWord8
