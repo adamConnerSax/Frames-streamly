@@ -2,7 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-|
-Module      : Frames.Streamly.LoadToCore
+Module      : Frames.Streamly.LoadInCore
 Description : Load directly from file to Frame
 Copyright   : (c) Adam Conner-Sax 2021
 License     : BSD-3-Clause
@@ -24,28 +24,21 @@ import qualified Frames.Streamly.CSV                          as FS
 import qualified Data.Strict.Maybe as Strict.Maybe
 import Frames.Streamly.Streaming.Class (StreamFunctions(..), StreamFunctionsIO(..))
 
-loadInCore :: forall s m rs rs'.(StreamFunctionsIO s m, V.RMap rs, FS.StrictReadRec rs, FS.RecVec rs, FS.RecVec rs')
-           => FS.ParserOptions -> FilePath -> (Frames.Record rs -> Maybe (Frames.Record rs')) -> (IOSafe s m) (Frames.FrameRec rs')
-loadInCore po fp t = sReadScanMAndFold @s @m fp (FS.parsingScanF po $ FS.parseOne po) (return FS.AccInitial) fld where
-  fromScan :: FS.Acc (Frames.Record rs) -> Maybe (Frames.Record rs')
-  fromScan x = FS.accToMaybe x >>= t
-  {-# INLINE fromScan #-}
-  fld :: FoldType s (IOSafe s m) (FS.Acc (Frames.Record rs)) (Frames.FrameRec rs')
-  fld = sLMapFoldM @s (return . fromScan) $ sFoldMaybe @s (FS.inCoreAoS_F @_ @s @(IOSafe s m))
-  {-# INLINE fld #-}
-{-# INLINEABLE loadInCore #-}
-
 loadInCore2 :: forall s m rs rs'.(StreamFunctionsIO s m, V.RMap rs, FS.StrictReadRec rs, FS.RecVec rs, FS.RecVec rs')
            => FS.ParserOptions -> FilePath -> (Frames.Record rs -> Maybe (Frames.Record rs')) -> (IOSafe s m) (Frames.FrameRec rs')
-loadInCore2 po fp t = FS.inCoreAoS $ sMapMaybe t $ FS.readTableOpt @rs @s @m po fp
-{-# INLINEABLE loadInCore2 #-}
-
-{-
-  sReadScanMAndFold @s @m fp (FS.parsingScanF po $ FS.parseOne po) (return FS.AccInitial) fld where
+loadInCore2 po fp t = sReadScanMAndFold @s @m fp (FS.parsingScanF po $ FS.parseOne po) (return FS.AccInitial) fld where
   fromScan :: FS.Acc (Frames.Record rs) -> Maybe (Frames.Record rs')
   fromScan x = FS.accToMaybe x >>= t
   {-# INLINE fromScan #-}
   fld :: FoldType s (IOSafe s m) (FS.Acc (Frames.Record rs)) (Frames.FrameRec rs')
   fld = sLMapFoldM @s (return . fromScan) $ sFoldMaybe @s (FS.inCoreAoS_F @_ @s @(IOSafe s m))
   {-# INLINE fld #-}
--}
+{-# INLINE loadInCore2 #-}
+
+loadInCore :: forall s m rs rs'.(StreamFunctionsIO s m, V.RMap rs, FS.StrictReadRec rs, FS.RecVec rs, FS.RecVec rs')
+           => FS.ParserOptions
+           -> FilePath
+           -> (Frames.Record rs -> Maybe (Frames.Record rs'))
+           -> (IOSafe s m) (Frames.FrameRec rs')
+loadInCore po fp t = FS.inCoreAoS $ sMapMaybe t $ FS.readTableOpt @rs @s @m po fp
+{-# INLINE loadInCore #-}
