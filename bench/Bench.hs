@@ -199,6 +199,7 @@ main = do
                               ]
 
 -}
+
     bgroup "inference (1000/5000)" [ bench "Pipes" $ nfIO (inferTypes $ ffNewRowGenP fp5000)
                                    , bench "Streamly" $ nfIO (inferTypes $ ffNewRowGenS fp5000)
                                    , bench "Frames" $ nfIO $ inferTypesF fp5000

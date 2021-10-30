@@ -59,7 +59,7 @@ ffNewRowGenP fp = (FStreamly.rowGen (thPath forestFiresPath)) { FStreamly.rowTyp
 ffNewRowGenS :: FilePath -> FStreamly.RowGen (StreamS.StreamlyStream StreamS.SerialT) 'FStreamly.ColumnByName Frames.CommonColumns
 ffNewRowGenS fp = (FStreamly.rowGen (thPath forestFiresPath))
                   { FStreamly.rowTypeName = "FFNew"
-                  ,FStreamly.lineReader = FStreamly.streamTokenized' @(StreamS.StreamlyStream StreamS.SerialT) @IO fp
+                  , FStreamly.lineReader = FStreamly.streamTokenized' @(StreamS.StreamlyStream StreamS.SerialT) @IO fp
                   }
 
 ffColSubsetRowGen :: FilePath -> FStreamly.RowGen FStreamly.DefaultStream 'FStreamly.ColumnByName Frames.CommonColumns

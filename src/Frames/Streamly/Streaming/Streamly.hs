@@ -37,7 +37,7 @@ import qualified Streamly.Data.Fold                     as Streamly.Fold
 import qualified Streamly.Internal.FileSystem.File      as Streamly.File
 import qualified Streamly.Internal.FileSystem.Handle    as Streamly.Handle
 import qualified Streamly.Internal.Data.Unfold          as Streamly.Unfold
---import qualified Streamly.External.ByteString as Streamly.BS
+import qualified Streamly.External.ByteString as Streamly.BS
 
 #if MIN_VERSION_streamly(0,8,0)
 import Streamly.Prelude                       (IsStream, SerialT)
@@ -46,6 +46,7 @@ import Streamly.Prelude                       (IsStream, SerialT)
 import qualified Streamly.Unicode.Stream           as Streamly.Unicode
 import qualified Streamly.Internal.Data.Array.Foreign.Type as F
 import qualified Streamly.Internal.Data.Array.Foreign.Mut.Type as FM
+import qualified Streamly.Internal.Data.Array.Stream.Foreign as Streamly.Array
 import qualified Streamly.Internal.Data.Fold.Type as Streamly.Fold
 import qualified Streamly.Internal.Data.Stream.StreamD.Generate as StreamD
 import qualified Streamly.Internal.Data.Stream.StreamD.Type as StreamD
@@ -115,7 +116,7 @@ instance (IsStream t, Monad m) => StreamFunctions (StreamlyStream t) m where
 instance (IsStream t, Streamly.MonadAsync m, MonadCatch m, PrimMonad m) => StreamFunctionsIO (StreamlyStream t) m where
   type IOSafe (StreamlyStream t) m = m
   runSafe = id
-  sReadTextLines = StreamlyStream . streamlyReadTextLines (Streamly.unfold unfoldViaBS)
+  sReadTextLines = StreamlyStream . streamlyReadTextLines linesUsingSplitOn --(Streamly.unfold unfoldViaBS)
   sReadScanMAndFold = streamlyReadScanMAndFold
   sWriteTextLines fp = streamlyWriteTextLines fp . stream
 
@@ -249,7 +250,11 @@ unfoldViaBS :: MonadIO m => Streamly.Unfold.Unfold m IO.Handle Text
 unfoldViaBS = fmap (Text.decodeUtf8 . BL.toStrict) $ Streamly.Unfold.lmapM (liftIO . BL.hGetContents) unfoldViaBS'
 {-# INLINE unfoldViaBS #-}
 
-
+linesUsingSplitOn :: (IsStream t, MonadIO m) => IO.Handle -> t m Text
+linesUsingSplitOn h = Streamly.unfold Streamly.Handle.readChunks h
+                      & Streamly.Array.splitOn _lf
+                      & Streamly.map (Text.decodeUtf8 . Streamly.BS.fromArray)
+{-# INLINE linesUsingSplitOn #-}
 {-
 streamlyReadTextLines' :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m) => FilePath -> t m Text
 streamlyReadTextLines' = word8ToTextLines2 . streamWord8
