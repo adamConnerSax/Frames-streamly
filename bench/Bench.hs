@@ -46,16 +46,35 @@ loadAndCountLines n = do
   let forestFiresPath = forestFiresPathPrefix <> show n <> ".csv"
   Streaming.runSafe @s $ Streaming.sLength $ Streaming.sReadTextLines @s @IO forestFiresPath
 
+loadTokenizeRawAndCountCells :: forall s. Streaming.StreamFunctionsIO s IO => Int -> IO Int
+loadTokenizeRawAndCountCells n = do
+  forestFiresPathPrefix <- Paths.usePath Paths.forestFiresPrefix
+  let forestFiresPath = forestFiresPathPrefix <> show n <> ".csv"
+  Streaming.runSafe @s $ Streaming.sFolder (+) 0 $ Streaming.sMap length $ Streaming.sTokenizedRaw @s @IO FStreamly.defaultSep forestFiresPath
+
+loadTokenizeAndCountCells :: forall s. Streaming.StreamFunctionsIO s IO => Int -> IO Int
+loadTokenizeAndCountCells n = do
+  forestFiresPathPrefix <- Paths.usePath Paths.forestFiresPrefix
+  let forestFiresPath = forestFiresPathPrefix <> show n <> ".csv"
+  Streaming.runSafe @s $ Streaming.sFolder (+) 0 $ Streaming.sMap length $ Streaming.sTokenized @s @IO FStreamly.defaultSep FStreamly.defaultQuotingMode forestFiresPath
+
 loadAndCountRecs :: forall s. Streaming.StreamFunctionsIO s IO => Int -> IO Int
 loadAndCountRecs n = do
+  forestFiresPathPrefix <- Paths.usePath Paths.forestFiresPrefix
+  let forestFiresPath = forestFiresPathPrefix <> show n <> ".csv"
+  Streaming.runSafe @s $ Streaming.sLength $ FStreamly.readTableOpt @(Frames.RecordColumns FFNew) @s @IO fFNewParser forestFiresPath
+
+
+loadAndCountFrame :: forall s. Streaming.StreamFunctionsIO s IO => Int -> IO Int
+loadAndCountFrame n = do
   let fLength = FL.fold FL.length
   forestFiresPathPrefix <- Paths.usePath Paths.forestFiresPrefix
   let forestFiresPath = forestFiresPathPrefix <> show n <> ".csv"
   forestFires :: Frames.Frame FFNew <- Streaming.runSafe @s $ FStreamly.inCoreAoS $ FStreamly.readTableOpt @_ @s @IO fFNewParser forestFiresPath
   return $ fLength forestFires
 
-loadAndCountRecsF :: Int -> IO Int
-loadAndCountRecsF n = do
+loadAndCountFrameF :: Int -> IO Int
+loadAndCountFrameF n = do
   let fLength = FL.fold FL.length
   forestFiresPathPrefix <- Paths.usePath Paths.forestFiresPrefix
   let forestFiresPath = forestFiresPathPrefix <> show n <> ".csv"
@@ -84,6 +103,7 @@ loadInCore n = do
     Streaming.runSafe @s $ FStreamly.loadInCore @s @IO fFNewParser forestFiresPath (either (const Nothing) Just . transform)
   return $ fLength forestFires'
 
+{-
 loadInCore2 :: forall s. Streaming.StreamFunctionsIO s IO => Int -> IO Int
 loadInCore2 n = do
   let fLength = FL.fold FL.length
@@ -92,7 +112,7 @@ loadInCore2 n = do
   forestFires' :: Frames.FrameRec [MthC, DayC, X, Y, AX]  <-
     Streaming.runSafe @s $ FStreamly.loadInCore2 @s @IO fFNewParser forestFiresPath (either (const Nothing) Just . transform)
   return $ fLength forestFires'
-
+-}
 
 loadAndTransformF :: Int -> IO Int
 loadAndTransformF n = do
@@ -208,11 +228,18 @@ main = do
 
     , bgroup "loadAndCountLines (5000)" [ bench "Pipes" $ nfIO $ loadAndCountLines @StreamP.PipeStream 5000
                                         , bench "Streamly" $ nfIO $ loadAndCountLines @(StreamS.StreamlyStream StreamS.SerialT) 5000]
+    , bgroup "loadTokenizeRawAndCountCells (5000)" [ bench "Pipes" $ nfIO $ loadTokenizeRawAndCountCells @StreamP.PipeStream 5000
+                                                   , bench "Streamly" $ nfIO $ loadTokenizeRawAndCountCells @(StreamS.StreamlyStream StreamS.SerialT) 5000]
+    , bgroup "loadTokenizeAndCountCells (5000)" [ bench "Pipes" $ nfIO $ loadTokenizeAndCountCells @StreamP.PipeStream 5000
+                                                , bench "Streamly" $ nfIO $ loadTokenizeAndCountCells @(StreamS.StreamlyStream StreamS.SerialT) 5000]
 
     , bgroup "loadAndCountRecs (5000)" [ bench "Pipes" $ nfIO (loadAndCountRecs @StreamP.PipeStream 5000)
                                    , bench "Streamly" $ nfIO (loadAndCountRecs @(StreamS.StreamlyStream StreamS.SerialT) 5000)
-                                   , bench "Frames" $ nfIO (loadAndCountRecsF 5000)
                                    ]
+    , bgroup "loadAndCountFrame (5000)" [ bench "Pipes" $ nfIO (loadAndCountFrame @StreamP.PipeStream 5000)
+                                        , bench "Streamly" $ nfIO (loadAndCountFrame @(StreamS.StreamlyStream StreamS.SerialT) 5000)
+                                        , bench "Frames" $ nfIO (loadAndCountFrameF 5000)
+                                        ]
     , bgroup "loadAndTransform (5000)" [ bench "Pipes" $ nfIO (loadAndTransform @StreamP.PipeStream 5000)
                                        , bench "Streamly" $ nfIO (loadAndTransform @(StreamS.StreamlyStream StreamS.SerialT) 5000)
                                        , bench "Frames" $ nfIO (loadAndTransformF 5000)
@@ -220,10 +247,10 @@ main = do
     , bgroup "loadInCore (5000)" [ bench "Pipes" $ nfIO (loadInCore @StreamP.PipeStream 5000)
                                  , bench "Streamly" $ nfIO (loadInCore @(StreamS.StreamlyStream StreamS.SerialT) 5000)
                                  ]
+{-
     , bgroup "loadInCore2 (5000)" [ bench "Pipes" $ nfIO (loadInCore2 @StreamP.PipeStream 5000)
                                   , bench "Streamly" $ nfIO (loadInCore2 @(StreamS.StreamlyStream StreamS.SerialT) 5000)
                                   ]
-{-
   , bgroup "loadAndCountRecs (50000)" [ bench "Pipes" $ nfIO (loadAndCountRecs @StreamP.PipeStream 50000)
                                   , bench "Streamly" $ nfIO (loadAndCountRecs @(StreamS.StreamlyStream StreamS.SerialT) 50000)
                                   , bench "Frames" $ nfIO (loadAndCountRecsF 50000)

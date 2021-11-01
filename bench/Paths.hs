@@ -13,12 +13,14 @@ module Paths where
 
 import qualified Paths_Frames_streamly as Paths
 import qualified Frames.Streamly.TH as FStreamly
-import qualified Frames.Streamly.CSV as FStreamly
+import qualified Frames.Streamly.CSV as FStreamly hiding (quotingMode)
 import qualified Frames.Streamly.ColumnTypeable as FStreamly
 import qualified Frames.Streamly.ColumnUniverse as FStreamly
 import qualified Frames.Streamly.OrMissing as FStreamly
+import Frames.Streamly.Streaming.Class (sTokenized)
 import qualified Frames.Streamly.Streaming.Pipes as StreamP
 import qualified Frames.Streamly.Streaming.Streamly as StreamS
+
 import qualified Data.Set as Set
 import qualified Data.Map as Map
 import qualified Data.Text as T
@@ -52,15 +54,19 @@ ffNewRowGen :: FStreamly.RowGen FStreamly.DefaultStream 'FStreamly.ColumnByName 
 ffNewRowGen = (FStreamly.rowGen (thPath forestFiresPath)) { FStreamly.rowTypeName = "FFNew" }
 
 ffNewRowGenP :: FilePath -> FStreamly.RowGen StreamP.PipeStream 'FStreamly.ColumnByName Frames.CommonColumns
-ffNewRowGenP fp = (FStreamly.rowGen (thPath forestFiresPath)) { FStreamly.rowTypeName = "FFNew"
-                                                              , FStreamly.lineReader = FStreamly.streamTokenized' @StreamP.PipeStream @IO fp
-                                                              }
+ffNewRowGenP fp = rg  { FStreamly.rowTypeName = "FFNew"
+                      , FStreamly.lineReader = \sep -> sTokenized sep (FStreamly.quotingMode rg) fp --FStreamly.streamTokenized' @StreamP.PipeStream @IO fp
+                      }
+  where
+    rg = FStreamly.rowGen (thPath forestFiresPath)
 
 ffNewRowGenS :: FilePath -> FStreamly.RowGen (StreamS.StreamlyStream StreamS.SerialT) 'FStreamly.ColumnByName Frames.CommonColumns
-ffNewRowGenS fp = (FStreamly.rowGen (thPath forestFiresPath))
+ffNewRowGenS fp = rg
                   { FStreamly.rowTypeName = "FFNew"
-                  , FStreamly.lineReader = FStreamly.streamTokenized' @(StreamS.StreamlyStream StreamS.SerialT) @IO fp
+                  , FStreamly.lineReader = \sep -> sTokenized sep (FStreamly.quotingMode rg) fp --FStreamly.streamTokenized' @(StreamS.StreamlyStream StreamS.SerialT) @IO fp
                   }
+  where
+    rg = FStreamly.rowGen (thPath forestFiresPath)
 
 ffColSubsetRowGen :: FilePath -> FStreamly.RowGen FStreamly.DefaultStream 'FStreamly.ColumnByName Frames.CommonColumns
 ffColSubsetRowGen fp = FStreamly.modifyColumnSelector modSelector rowGen

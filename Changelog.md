@@ -1,3 +1,6 @@
+v0.3.0.0
+* Changed API so tokenizing is handled when the file is read.  This changes various library function signatures.
+
 v0.2.0.0
 * Added support for using any stream type implementing the ```Streaming``` class. Backends are provided for Pipes and Streamly
 * Added ability to infer and load only a subset of columns, identified either by column header or integer column position.

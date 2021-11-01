@@ -13,7 +13,7 @@ Stability   : experimental
 module Frames.Streamly.LoadInCore
     (
       loadInCore
-    , loadInCore2
+--    , loadInCore2
     )
 where
 
@@ -24,6 +24,7 @@ import qualified Frames.Streamly.CSV                          as FS
 import qualified Data.Strict.Maybe as Strict.Maybe
 import Frames.Streamly.Streaming.Class (StreamFunctions(..), StreamFunctionsIO(..))
 
+{-
 loadInCore2 :: forall s m rs rs'.(StreamFunctionsIO s m, V.RMap rs, FS.StrictReadRec rs, FS.RecVec rs, FS.RecVec rs')
            => FS.ParserOptions -> FilePath -> (Frames.Record rs -> Maybe (Frames.Record rs')) -> (IOSafe s m) (Frames.FrameRec rs')
 loadInCore2 po fp t = sReadScanMAndFold @s @m fp (FS.parsingScanF po $ FS.parseOne po) (return FS.AccInitial) fld where
@@ -34,6 +35,7 @@ loadInCore2 po fp t = sReadScanMAndFold @s @m fp (FS.parsingScanF po $ FS.parseO
   fld = sLMapFoldM @s (return . fromScan) $ sFoldMaybe @s (FS.inCoreAoS_F @_ @s @(IOSafe s m))
   {-# INLINE fld #-}
 {-# INLINE loadInCore2 #-}
+-}
 
 loadInCore :: forall s m rs rs'.(StreamFunctionsIO s m, V.RMap rs, FS.StrictReadRec rs, FS.RecVec rs, FS.RecVec rs')
            => FS.ParserOptions

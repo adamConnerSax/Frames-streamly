@@ -9,8 +9,10 @@
 {-# LANGUAGE TypeFamilies #-}
 module Frames.Streamly.Streaming.Class where
 
+import Frames.Streamly.Streaming.Common (Separator, QuotingMode)
 import           Control.Monad.Catch                     ( MonadThrow(..))
 import Control.Foldl (PrimMonad)
+
 class Monad m => StreamFunctions (s :: (Type -> Type) -> Type -> Type) (m :: Type -> Type) where
   type FoldType s ::  (Type -> Type) -> Type -> Type -> Type
   sThrowIfEmpty :: forall x. MonadThrow m => s m x -> m ()
@@ -55,8 +57,13 @@ class Monad m => StreamFunctions (s :: (Type -> Type) -> Type -> Type) (m :: Typ
 class (StreamFunctions s (IOSafe s m), MonadThrow (IOSafe s m), PrimMonad (IOSafe s m)) => StreamFunctionsIO (s :: (Type -> Type) -> Type -> Type) m where
   type IOSafe s m :: Type -> Type
   runSafe :: forall a.IOSafe s m a ->  m a
+  -- ^ Unwrap computation fram a resource management monad layer, if present.
   sReadTextLines :: FilePath -> s (IOSafe s m) Text
   -- ^ create a stream of lines of text by reading the given file
+  sTokenized :: Separator -> QuotingMode -> FilePath -> s (IOSafe s m) [Text]
+  -- ^ read lines of text, split them by a separator, handle quotation.
+  sTokenizedRaw :: Separator -> FilePath -> s (IOSafe s m) [Text]
+  -- ^ read lines of text, split them by a separator
   sReadScanMAndFold :: forall x b.FilePath -> (x -> Text -> (IOSafe s m) x) -> (IOSafe s m) x -> FoldType s (IOSafe s m) x b -> (IOSafe s m) b
   sWriteTextLines :: FilePath -> s (IOSafe s m) Text -> m ()
     -- ^ streamly version handles invalid characters

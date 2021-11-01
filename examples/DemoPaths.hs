@@ -86,18 +86,19 @@ ffInferTypedDayRG = FStreamly.modifyColumnSelector modSelector rg
          FStreamly.allColumnsAsNamed
          "TD"
          FStreamly.defaultSep
+         FStreamly.defaultQuotingMode
          "FFInferTypedDay"
          FStreamly.parseableParseHowRec
          1000
          FStreamly.defaultIsMissing
-         (FStreamly.streamTokenized' @_ @IO (thPath forestFiresPath))
+         (\sep -> FStreamly.sTokenized @_ @IO sep FStreamly.defaultQuotingMode (thPath forestFiresPath))
     modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
 
 ffInferTypedDayOrMissingRG :: FStreamly.RowGen FStreamly.DefaultStream 'FStreamly.ColumnByName TDColumns
 ffInferTypedDayOrMissingRG = setOrMissingWhen
                               $ ffInferTypedDayRG { FStreamly.rowTypeName = "FFInferTypedDayOrMissing"
                                                   , FStreamly.tablePrefix = "TDOM"
-                                                  , FStreamly.lineReader =  FStreamly.streamTokenized' (thPath forestFiresPath)
+                                                  , FStreamly.lineReader = \sep -> FStreamly.sTokenized sep FStreamly.defaultQuotingMode (thPath forestFiresPath)
 
                                                   } where
   setOrMissingWhen = FStreamly.setOrMissingWhen (FStreamly.HeaderText "wind") FStreamly.IfSomeMissing
@@ -146,11 +147,12 @@ ffInferTypedDayMonthRG = FStreamly.modifyColumnSelector modSelector rg
          FStreamly.allColumnsAsNamed
          "TDM"
          FStreamly.defaultSep
+         FStreamly.defaultQuotingMode
          "FFInferTypedDayMonth"
          dayMonthColsParserHowRec
          1000
          FStreamly.defaultIsMissing
-         (FStreamly.streamTokenized' @_ @IO (thPath forestFiresPath))
+         (\sep -> FStreamly.sTokenized @_ @IO sep FStreamly.defaultQuotingMode (thPath forestFiresPath))
     modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp","wind"])
 
 

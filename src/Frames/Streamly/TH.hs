@@ -222,6 +222,8 @@ data RowGen (s :: (Type -> Type) -> Type -> Type) (b :: ColumnId) (a :: [Type]) 
          , separator      :: SCSV.Separator
            -- ^ The string that separates the columns on a
            -- row.
+         , quotingMode :: SCSV.QuotingMode
+           -- ^ Special handling for quoted fields
          , rowTypeName    :: String
            -- ^ The row type that enumerates all
            -- columns.
@@ -235,7 +237,7 @@ data RowGen (s :: (Type -> Type) -> Type -> Type) (b :: ColumnId) (a :: [Type]) 
          , isMissing :: Text -> Bool
            -- ^ Control what text is considered missing.
            -- Defaults to @isMissing t = null t || t == "NA"@
-         , lineReader :: Text -> s (IOSafe s IO) [Text]
+         , lineReader :: SCSV.Separator -> s (IOSafe s IO) [Text]
            -- ^ A producer of rows of ’T.Text’ values that were
            -- separated by a 'Separator' value.
          }
@@ -253,11 +255,12 @@ rowGen' fp = RowGen
   allColumnsAsNamed \
   ""
   SCSV.defaultSep
+  SCSV.defaultQuotingMode
   "Row"
   FSCU.parseableParseHowRec
   1000
   defaultIsMissing
-  (SCSV.streamTokenized' @s @IO fp)
+  (\sep -> sTokenized @s @IO sep SCSV.defaultQuotingMode fp)
 {-# INLINEABLE rowGen' #-}
 
 -- | A default 'RowGen'. This instructs the type inference engine to
@@ -287,11 +290,12 @@ rowGenCat' fp = RowGen
   allColumnsAsNamed
   ""
   SCSV.defaultSep
+  SCSV.defaultQuotingMode
   "Row"
   FSCU.parseableParseHowRec
   1000
   defaultIsMissing
-  (SCSV.streamTokenized' @s @IO fp)
+  (\sep -> sTokenized @s @IO sep SCSV.defaultQuotingMode fp)
 {-# INLINEABLE rowGenCat' #-}
 
 -- | Like 'rowGen', but will also generate custom data types for

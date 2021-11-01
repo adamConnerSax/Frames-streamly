@@ -18,7 +18,7 @@ module Frames.Streamly.Streaming.Pipes
   ) where
 
 import Frames.Streamly.Streaming.Class
-
+import qualified Frames.Streamly.Streaming.Common as Common
 import Frames.Streamly.Internal.CSV (FramesCSVException(..))
 
 import qualified Pipes
@@ -84,13 +84,16 @@ instance Monad m => StreamFunctions PipeStream m where
 instance (Monad m, MonadThrow m, PSafe.MonadMask m, MonadIO m, Foldl.PrimMonad (PSafe.SafeT m)) => StreamFunctionsIO PipeStream m where
   type IOSafe PipeStream m = PSafe.SafeT m
   runSafe = PSafe.runSafeT
---  sReadTextLines = PipeStream . PText.readFileLn
   sReadTextLines fp = PipeStream $ PSafe.withFile fp IO.ReadMode unfoldViaBS
+  sTokenized sep qm = sMap (Common.tokenizeRow sep qm) . sReadTextLines
+  sTokenizedRaw sep = sMap (Common.splitRow sep) . sReadTextLines
   sReadScanMAndFold = pipestreamReadScanMAndFold
   sWriteTextLines fp s = PSafe.runSafeT $ Pipes.runEffect $ (producer s) Pipes.>-> PText.writeFileLn fp
 
   {-# INLINE runSafe #-}
   {-# INLINEABLE sReadTextLines #-}
+  {-# INLINEABLE sTokenized #-}
+--  {-# INLINEABLE sTokenizedRaw #-}
   {-# INLINEABLE sReadScanMAndFold #-}
   {-# INLINEABLE sWriteTextLines #-}
 
