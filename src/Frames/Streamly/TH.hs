@@ -26,6 +26,7 @@ module Frames.Streamly.TH
   , declarePrefixedColumnType
     -- * Control Type-declarations for a table
   , RowGen(..)
+  , Separator(..)
   , defaultSep
   , defaultIsMissing
   , DefaultStream
@@ -63,6 +64,7 @@ import Prelude hiding (lift)
 import Frames.Streamly.Streaming.Streamly (StreamlyStream, SerialT)
 import Frames.Streamly.Streaming.Pipes (PipeStream)
 import Frames.Streamly.Streaming.Class
+import Frames.Streamly.Streaming.Common (Separator(..))
 import qualified Frames.Streamly.CSV as SCSV
 import Frames.Streamly.CSV (ParserOptions(..), defaultSep) -- for re-export or TH
 import Frames.Streamly.OrMissing
