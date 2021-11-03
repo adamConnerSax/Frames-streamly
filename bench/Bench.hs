@@ -46,17 +46,18 @@ loadAndCountLines n = do
   let forestFiresPath = forestFiresPathPrefix <> show n <> ".csv"
   Streaming.runSafe @s $ Streaming.sLength $ Streaming.sReadTextLines @s @IO forestFiresPath
 
+{-
 loadTokenizeRawAndCountCells :: forall s. Streaming.StreamFunctionsIO s IO => Int -> IO Int
 loadTokenizeRawAndCountCells n = do
   forestFiresPathPrefix <- Paths.usePath Paths.forestFiresPrefix
   let forestFiresPath = forestFiresPathPrefix <> show n <> ".csv"
   Streaming.runSafe @s $ Streaming.sFolder (+) 0 $ Streaming.sMap length $ Streaming.sTokenizedRaw @s @IO FStreamly.defaultSep forestFiresPath
-
+-}
 loadTokenizeAndCountCells :: forall s. Streaming.StreamFunctionsIO s IO => Int -> IO Int
 loadTokenizeAndCountCells n = do
   forestFiresPathPrefix <- Paths.usePath Paths.forestFiresPrefix
   let forestFiresPath = forestFiresPathPrefix <> show n <> ".csv"
-  Streaming.runSafe @s $ Streaming.sFolder (+) 0 $ Streaming.sMap length $ Streaming.sTokenized @s @IO FStreamly.defaultSep FStreamly.defaultQuotingMode forestFiresPath
+  Streaming.runSafe @s $ Streaming.sFolder (+) 0 $ Streaming.sMap length $ Streaming.sTokenized @s @IO FStreamly.defaultSep FStreamly.NoQuoting  forestFiresPath
 
 loadAndCountRecs :: forall s. Streaming.StreamFunctionsIO s IO => Int -> IO Int
 loadAndCountRecs n = do
@@ -228,8 +229,6 @@ main = do
 
     , bgroup "loadAndCountLines (5000)" [ bench "Pipes" $ nfIO $ loadAndCountLines @StreamP.PipeStream 5000
                                         , bench "Streamly" $ nfIO $ loadAndCountLines @(StreamS.StreamlyStream StreamS.SerialT) 5000]
-    , bgroup "loadTokenizeRawAndCountCells (5000)" [ bench "Pipes" $ nfIO $ loadTokenizeRawAndCountCells @StreamP.PipeStream 5000
-                                                   , bench "Streamly" $ nfIO $ loadTokenizeRawAndCountCells @(StreamS.StreamlyStream StreamS.SerialT) 5000]
     , bgroup "loadTokenizeAndCountCells (5000)" [ bench "Pipes" $ nfIO $ loadTokenizeAndCountCells @StreamP.PipeStream 5000
                                                 , bench "Streamly" $ nfIO $ loadTokenizeAndCountCells @(StreamS.StreamlyStream StreamS.SerialT) 5000]
 

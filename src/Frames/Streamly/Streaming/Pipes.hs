@@ -86,14 +86,12 @@ instance (Monad m, MonadThrow m, PSafe.MonadMask m, MonadIO m, Foldl.PrimMonad (
   runSafe = PSafe.runSafeT
   sReadTextLines fp = PipeStream $ PSafe.withFile fp IO.ReadMode unfoldViaBS
   sTokenized sep qm = sMap (Common.tokenizeRow sep qm) . sReadTextLines
-  sTokenizedRaw sep = sMap (Common.splitRow sep) . sReadTextLines
   sReadScanMAndFold = pipestreamReadScanMAndFold
   sWriteTextLines fp s = PSafe.runSafeT $ Pipes.runEffect $ (producer s) Pipes.>-> PText.writeFileLn fp
 
-  {-# INLINE runSafe #-}
+  {-# INLINEABLE runSafe #-}
   {-# INLINEABLE sReadTextLines #-}
   {-# INLINEABLE sTokenized #-}
---  {-# INLINEABLE sTokenizedRaw #-}
   {-# INLINEABLE sReadScanMAndFold #-}
   {-# INLINEABLE sWriteTextLines #-}
 

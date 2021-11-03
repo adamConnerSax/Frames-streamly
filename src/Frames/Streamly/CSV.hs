@@ -85,17 +85,11 @@ module Frames.Streamly.CSV
     , formatTextAsIs
     , formatWithShow
     , formatWithShowCSV
---    , word8ToTextLines
     -- * TH Support
     , sTokenized
---    , streamTokenized'
---    , streamTokenized
     , ColTypeInfo(..)
     , readColHeaders
---    , framesParserOptionsForTokenizing
     -- * debugging
---    , streamParsed
---    , streamParsedMaybe
       -- * Re-exports
     , Separator(..)
     , QuoteChar
@@ -123,7 +117,7 @@ import Frames.Streamly.Streaming.Common (Separator(..)
                                         , defaultQuotingMode
                                         , textToSeparator
                                         , separatorToText)
-import qualified Frames.Streamly.Streaming.Common as Streaming
+--import qualified Frames.Streamly.Streaming.Common as Streaming
 import qualified Frames.Streamly.ColumnTypeable as FSCT
 
 import Prelude hiding(getCompose)
@@ -143,13 +137,12 @@ import qualified Data.Vinyl.TypeLevel                   as Vinyl
 import qualified Data.Vinyl.Class.Method                as Vinyl
 
 import qualified Frames
-import qualified Frames.CSV                             as Frames
+--import qualified Frames.CSV                             as Frames
 --import Frames.CSV                             (QuoteChar, QuotingMode(..), defaultSep)
 import qualified Frames.ShowCSV                         as Frames
 import qualified Data.Vinyl as V
 import qualified Data.Vinyl.Functor as V (Compose(..), (:.))
 import GHC.TypeLits (KnownSymbol)
-import Foreign.C.String (charIsRepresentable)
 
 
 -- | Holds column separator, quote handling and column selection information.

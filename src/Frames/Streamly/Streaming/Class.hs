@@ -62,8 +62,10 @@ class (StreamFunctions s (IOSafe s m), MonadThrow (IOSafe s m), PrimMonad (IOSaf
   -- ^ create a stream of lines of text by reading the given file
   sTokenized :: Separator -> QuotingMode -> FilePath -> s (IOSafe s m) [Text]
   -- ^ read lines of text, split them by a separator, handle quotation.
+{-
   sTokenizedRaw :: Separator -> FilePath -> s (IOSafe s m) [Text]
   -- ^ read lines of text, split them by a separator
+-}
   sReadScanMAndFold :: forall x b.FilePath -> (x -> Text -> (IOSafe s m) x) -> (IOSafe s m) x -> FoldType s (IOSafe s m) x b -> (IOSafe s m) b
   sWriteTextLines :: FilePath -> s (IOSafe s m) Text -> m ()
     -- ^ streamly version handles invalid characters

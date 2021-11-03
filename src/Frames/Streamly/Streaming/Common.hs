@@ -35,21 +35,23 @@ textToSeparator :: Text -> Separator
 textToSeparator t = if T.length t == 1 then CharSeparator (T.head t) else TextSeparator t
 {-# INLINEABLE textToSeparator #-}
 
+handleQuoting :: Separator -> QuotingMode -> [Text] -> [Text]
+handleQuoting sep quoting = case quoting of
+  NoQuoting-> id
+  RFC4180Quoting quote -> reassembleRFC4180QuotedParts (separatorToText sep) quote
+{-# INLINEABLE handleQuoting #-}
+
 -- | Helper to split a 'T.Text' on commas and strip leading and
 -- trailing whitespace from each resulting chunk.
 tokenizeRow :: Separator -> QuotingMode -> T.Text -> [T.Text]
-tokenizeRow sep quoting = handleQuoting . splitRow sep
-  where
-    {-# INLINE handleQuoting #-}
-    handleQuoting = case quoting of
-      NoQuoting-> id
-      RFC4180Quoting quote -> reassembleRFC4180QuotedParts (separatorToText sep) quote
+tokenizeRow sep quoting = handleQuoting sep quoting . splitRow sep
+{-# INLINEABLE tokenizeRow #-}
 
 splitRow :: Separator -> T.Text -> [T.Text]
 splitRow sep = case sep of
   CharSeparator c -> T.split (== c)
   TextSeparator t -> T.splitOn t
-{-# INLINE splitRow #-}
+{-# INLINEABLE splitRow #-}
 
 -- | Post processing applied to a list of tokens split by the
 -- separator which should have quoted sections reassembeld
@@ -83,3 +85,4 @@ reassembleRFC4180QuotedParts sep quoteChar = go
         unescape :: T.Text -> T.Text
         unescape = T.replace q2 quoteText
           where q2 = quoteText <> quoteText
+{-# INLINE reassembleRFC4180QuotedParts #-}

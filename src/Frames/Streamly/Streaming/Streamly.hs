@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE KindSignatures #-}
@@ -9,6 +10,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE TypeOperators #-}
 module Frames.Streamly.Streaming.Streamly
   (
     StreamlyStream(..)
@@ -26,46 +28,27 @@ import           Control.Monad.Catch                     ( MonadThrow(..), Monad
 import Control.Foldl (PrimMonad)
 import Control.Exception (try)
 import qualified Control.Monad.Trans.Control as MC
---import qualified Data.ByteString.Lazy as BL
---import qualified Data.ByteString as BS
---import Data.ByteString.Internal (w2c, c2w)
---import Data.DList as DL
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as Text
-import qualified Data.Text.Encoding.Error as Text
---import qualified Text.Builder as TB
 import Data.Word8 (_lf)
+
+
 import qualified Streamly.Prelude                       as Streamly
 import qualified Streamly.Data.Fold                     as Streamly.Fold
 import qualified Streamly.Internal.FileSystem.File      as Streamly.File
 import qualified Streamly.Internal.FileSystem.Handle    as Streamly.Handle
 import qualified Streamly.Internal.Data.Unfold          as Streamly.Unfold
 import qualified Streamly.External.ByteString as Streamly.BS
-
 #if MIN_VERSION_streamly(0,8,0)
 import Streamly.Prelude                       (IsStream, SerialT)
---import qualified Streamly.Internal.Unicode.Array.Char as Streamly.Unicode.Array
---import qualified Streamly.Data.Array.Foreign as Streamly.Array
 import qualified Streamly.Unicode.Stream           as Unicode
-import qualified Streamly.Internal.Data.Array.Foreign as Array
---import qualified Streamly.Internal.Data.Array.Stream.Foreign as Array
---import qualified Streamly.Internal.Data.Array.Foreign.Type as F
---import qualified Streamly.Internal.Data.Array.Foreign.Mut.Type as FM
-import qualified Streamly.Internal.Data.Array.Stream.Fold.Foreign as Array
-import qualified Streamly.Internal.Data.Array.Stream.Foreign as Array
---import qualified Streamly.Internal.Data.Fold.Type as Streamly.Fold
+import qualified Streamly.Internal.Data.Array.Stream.Foreign as Array.Stream
 import qualified Streamly.Internal.Data.Stream.StreamD.Generate as StreamD
 import qualified Streamly.Internal.Data.Stream.StreamD.Type as StreamD
 import qualified Streamly.Internal.Data.Stream.StreamD.Transform as StreamD
---import qualified Streamly.Internal.Data.Parser as Streamly.Parser
---import qualified Streamly.Internal.Data.Parser.ParserD as ParserD
---import qualified Streamly.Internal.Data.Stream.IsStream.Reduce as Reduce
---import qualified Streamly.Internal.Data.Array.Foreign.Type as FArray
 #else
 import qualified Streamly                               as Streamly
 import           Streamly                                ( IsStream, SerialT )
---import qualified Streamly.Internal.Memory.Unicode.Array as Streamly.Unicode.Array
---import qualified Streamly.Internal.Memory.Array.Types as Streamly.Array
 import qualified Streamly.Data.Unicode.Stream           as Streamly.Unicode
 import qualified Streamly.Internal.Data.Fold as Streamly.Fold
 #endif
@@ -73,9 +56,6 @@ import qualified Streamly.Internal.Data.Fold as Streamly.Fold
 import qualified Data.Text.IO as Text
 import qualified System.IO as IO
 import GHC.IO.Exception (IOException)
-import Frames.Streamly.Streaming.Common (reassembleRFC4180QuotedParts)
-import Data.ByteString.Lazy.Builder (byteString)
---import qualified Streamly.Internal.Unicode.Stream as Text
 
 newtype StreamlyStream (t ::  (Type -> Type) -> Type -> Type) m a = StreamlyStream { stream :: t m a }
 
@@ -124,16 +104,14 @@ instance (IsStream t, Monad m) => StreamFunctions (StreamlyStream t) m where
 instance (IsStream t, Streamly.MonadAsync m, MonadCatch m, PrimMonad m) => StreamFunctionsIO (StreamlyStream t) m where
   type IOSafe (StreamlyStream t) m = m
   runSafe = id
-  sReadTextLines = StreamlyStream . streamlyReadTextLines linesUsingSplitOn --(Streamly.unfold unfoldViaBS)
-  sTokenized sep qm = StreamlyStream . streamlyReadTextLines (tokenized1 sep qm)
-  sTokenizedRaw sep = StreamlyStream . streamlyReadTextLines (tokenizedRaw2 sep)
+  sReadTextLines = StreamlyStream . streamlyReadTextLines linesUsingSplitOn
+  sTokenized sep qm = StreamlyStream . streamlyReadTextLines (tokenized sep qm)
   sReadScanMAndFold = streamlyReadScanMAndFold
   sWriteTextLines fp = streamlyWriteTextLines fp . stream
 
-  {-# INLINE runSafe #-}
+  {-# INLINEABLE runSafe #-}
   {-# INLINEABLE sReadTextLines #-}
   {-# INLINEABLE sTokenized #-}
-  {-# INLINEABLE sTokenizedRaw #-}
   {-# INLINEABLE sReadScanMAndFold #-}
   {-# INLINEABLE sWriteTextLines #-}
 
@@ -213,22 +191,54 @@ streamlyFolder step start = Streamly.fold (streamlyBuildFold step start id) . St
 
 linesUsingSplitOn :: (IsStream t, MonadIO m) => IO.Handle -> t m Text
 linesUsingSplitOn h = Streamly.unfold Streamly.Handle.readChunks h
-                      & Array.splitOnSuffix _lf
+                      & Array.Stream.splitOnSuffix _lf
                       & Streamly.map (Text.decodeUtf8 . Streamly.BS.fromArray)
 {-# INLINE linesUsingSplitOn #-}
 
 
-tokenized1 :: (IsStream t, MonadIO m) => Common.Separator -> Common.QuotingMode -> IO.Handle -> t m [Text]
-tokenized1 sep qm h = Streamly.unfold Streamly.Handle.readChunks h
-                     & Array.splitOnSuffix _lf
+tokenized :: (IsStream t, MonadIO m) => Common.Separator -> Common.QuotingMode -> IO.Handle -> t m [Text]
+tokenized sep qm h = Streamly.unfold Streamly.Handle.readChunks h
+                     & Array.Stream.splitOnSuffix _lf
                      & Streamly.map (Common.tokenizeRow sep qm . Text.decodeUtf8 . Streamly.BS.fromArray)
-{-# INLINE tokenized1 #-}
+{-# INLINE tokenized #-}
+
+{-
+tokenized2 :: (IsStream t, Streamly.MonadAsync m) => Common.Separator -> Common.QuotingMode -> IO.Handle -> t m [Text]
+tokenized2 sep qm h = Streamly.unfold Streamly.Handle.readChunks h
+                     & Array.Stream.splitOnSuffix _lf
+                     & wordArraysToTextLists sep qm
+{-# INLINE tokenized2 #-}
+
+wordArraysToTextLists :: (IsStream t, Streamly.MonadAsync m) => Common.Separator -> Common.QuotingMode -> t m (Array.Array Word8) -> t m [Text]
+wordArraysToTextLists sep qm = case sep of
+  Common.TextSeparator _ ->  Streamly.map (Common.tokenizeRow sep qm . Text.decodeUtf8 . Streamly.BS.fromArray)
+  Common.CharSeparator c -> Streamly.mapM (fmap (Common.handleQuoting sep qm) . processArray2 c)
+{-# INLINE wordArraysToTextLists #-}
+
+wordArraysToTextListsRaw :: (IsStream t, Streamly.MonadAsync m) => Common.Separator -> t m (Array.Array Word8) -> t m [Text]
+wordArraysToTextListsRaw sep = case sep of
+  Common.TextSeparator _ ->  Streamly.map (Common.splitRow sep . Text.decodeUtf8 . Streamly.BS.fromArray)
+  Common.CharSeparator c -> Streamly.mapM (processArray2 c)
+{-# INLINE wordArraysToTextListsRaw #-}
 
 tokenizedRaw :: (IsStream t, MonadIO m) => Common.Separator -> IO.Handle -> t m [Text]
 tokenizedRaw sep h = Streamly.unfold Streamly.Handle.readChunks h
-                     & Array.splitOnSuffix _lf
+                     & Array.Stream.splitOnSuffix _lf
                      & Streamly.map (Common.splitRow sep . Text.decodeUtf8 . Streamly.BS.fromArray)
 {-# INLINE tokenizedRaw #-}
+
+tokenizedRaw3 :: forall t m.(IsStream t, Streamly.MonadAsync m) => Common.Separator -> IO.Handle -> t m [Text]
+tokenizedRaw3 sep h = Streamly.unfold Streamly.Handle.readChunks h
+                      & Array.Stream.splitOnSuffix _lf
+                      & wordArraysToTextListsRaw sep
+{-# INLINE tokenizedRaw3 #-}
+
+{-# INLINE processArray2 #-}
+processArray2 :: MonadIO m => Char ->  Array.Array Word8 -> m [Text]
+processArray2 c arr =
+  let c2w = fromIntegral . ord
+      toText arr = Text.decodeUtf8 $ Streamly.BS.fromArray arr
+  in Streamly.toList $ Streamly.map toText $ Array.Stream.splitOn (c2w c) $ Streamly.fromPure arr
 
 tokenizedRaw2 :: forall t m.(IsStream t, Streamly.MonadAsync m) => Common.Separator -> IO.Handle -> t m [Text]
 tokenizedRaw2 sep h = Streamly.unfold Streamly.Handle.readChunks h & processArrayStream sep
@@ -245,6 +255,9 @@ lineFold c =
       split = Streamly.Fold.takeEndBy (== c2w c) toTextFld
   in Streamly.Fold.many split Streamly.Fold.toList
 
+
+
+
 {-# INLINE processArray #-}
 processArray :: MonadIO m => Char -> Array.Array Word8 -> m [Text]
 processArray c arr = Streamly.unfold Array.read arr
@@ -252,15 +265,21 @@ processArray c arr = Streamly.unfold Array.read arr
 
 {-# INLINE processArrayBaseLine #-}
 processArrayBaseLine :: Char -> Array.Array Word8 -> [Text]
-processArrayBaseLine c =  Common.splitRow (Common.CharSeparator c) . Text.decodeUtf8 . Streamly.BS.fromArray
+processArrayBaseLine c arr =  Common.splitRow (Common.CharSeparator c) $ Text.decodeUtf8 $ Streamly.BS.fromArray arr
+
+{-# INLINE processArrayBaseLine2 #-}
+processArrayBaseLine2 :: MonadIO m => Char -> Array.Array Word8 -> m [Text]
+processArrayBaseLine2 c arr =  Common.splitRow (Common.CharSeparator c) <$> Array.fold toTextFld arr
+
 
 {-# INLINE processArrayStream #-}
 processArrayStream :: (Streamly.MonadAsync m, IsStream t) => Common.Separator -> t m (Array.Array Word8) -> t m [Text]
-processArrayStream sep =
+processArrayStream sep arrS =
   let arrayToText = case sep of
         Common.TextSeparator _ ->  Streamly.map (Common.splitRow sep . Text.decodeUtf8 . Streamly.BS.fromArray)
-        Common.CharSeparator c -> Streamly.map (processArrayBaseLine c)
-  in arrayToText . Array.splitOnSuffix _lf
+        Common.CharSeparator c -> Streamly.mapM (processArray2 c)
+  in arrayToText $ Array.Stream.splitOnSuffix _lf arrS
+-}
 {-
 tokenizedLines :: (IsStream t, MonadIO m) => Word8 -> IO.Handle -> t m Text
 tokenizedLines s h = Streamly.unfold Streamly.Handle.readChunks h

@@ -21,8 +21,16 @@ import qualified Frames
 import qualified Data.Vinyl as V
 import qualified Frames.Streamly.InCore                          as FS
 import qualified Frames.Streamly.CSV                          as FS
-import qualified Data.Strict.Maybe as Strict.Maybe
+--import qualified Data.Strict.Maybe as Strict.Maybe
 import Frames.Streamly.Streaming.Class (StreamFunctions(..), StreamFunctionsIO(..))
+
+loadInCore :: forall s m rs rs'.(StreamFunctionsIO s m, V.RMap rs, FS.StrictReadRec rs, FS.RecVec rs, FS.RecVec rs')
+           => FS.ParserOptions
+           -> FilePath
+           -> (Frames.Record rs -> Maybe (Frames.Record rs'))
+           -> (IOSafe s m) (Frames.FrameRec rs')
+loadInCore po fp t = FS.inCoreAoS $ sMapMaybe t $ FS.readTableOpt @rs @s @m po fp
+{-# INLINE loadInCore #-}
 
 {-
 loadInCore2 :: forall s m rs rs'.(StreamFunctionsIO s m, V.RMap rs, FS.StrictReadRec rs, FS.RecVec rs, FS.RecVec rs')
@@ -36,11 +44,3 @@ loadInCore2 po fp t = sReadScanMAndFold @s @m fp (FS.parsingScanF po $ FS.parseO
   {-# INLINE fld #-}
 {-# INLINE loadInCore2 #-}
 -}
-
-loadInCore :: forall s m rs rs'.(StreamFunctionsIO s m, V.RMap rs, FS.StrictReadRec rs, FS.RecVec rs, FS.RecVec rs')
-           => FS.ParserOptions
-           -> FilePath
-           -> (Frames.Record rs -> Maybe (Frames.Record rs'))
-           -> (IOSafe s m) (Frames.FrameRec rs')
-loadInCore po fp t = FS.inCoreAoS $ sMapMaybe t $ FS.readTableOpt @rs @s @m po fp
-{-# INLINE loadInCore #-}
