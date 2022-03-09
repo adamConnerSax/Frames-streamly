@@ -10,7 +10,7 @@ data Separator = CharSeparator Char | TextSeparator Text deriving (Show, Eq, Ord
 
 defaultSep :: Separator
 defaultSep = CharSeparator ','
-{-# INLINE defaultSep #-}
+{-# INLINEABLE defaultSep #-}
 
 type QuoteChar = Char
 
@@ -24,7 +24,7 @@ data QuotingMode
 
 defaultQuotingMode :: QuotingMode
 defaultQuotingMode = RFC4180Quoting '\"'
-{-# INLINE defaultQuotingMode #-}
+{-# INLINEABLE defaultQuotingMode #-}
 
 separatorToText :: Separator -> Text
 separatorToText (CharSeparator c) = T.singleton c
@@ -85,4 +85,4 @@ reassembleRFC4180QuotedParts sep quoteChar = go
         unescape :: T.Text -> T.Text
         unescape = T.replace q2 quoteText
           where q2 = quoteText <> quoteText
-{-# INLINE reassembleRFC4180QuotedParts #-}
+{-# INLINEABLE reassembleRFC4180QuotedParts #-}

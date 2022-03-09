@@ -111,15 +111,15 @@ pipesPostMapM f (Foldl.FoldM step begin done) = Foldl.FoldM step begin done'
 
 pipesBuildFold :: Monad m => (x -> a -> x) -> x -> (x -> b) -> Foldl.FoldM m a b
 pipesBuildFold step start extract = Foldl.generalize $ Foldl.Fold step start extract
-{-# INLINE pipesBuildFold #-}
+{-# INLINEABLE pipesBuildFold #-}
 
 pipesBuildFoldM :: (x -> a -> m x) -> m x -> (x -> m b) -> Foldl.FoldM m a b
 pipesBuildFoldM = Foldl.FoldM
-{-# INLINE pipesBuildFoldM #-}
+{-# INLINEABLE pipesBuildFoldM #-}
 
 pipesThrowIfEmpty :: MonadThrow m => Pipes.Producer a m () -> m ()
 pipesThrowIfEmpty s = Pipes.null s >>= \b -> if b then throwM EmptyStreamException else return ()
-{-# INLINE pipesThrowIfEmpty #-}
+{-# INLINEABLE pipesThrowIfEmpty #-}
 
 pipesFolder :: Monad m => (x -> b -> x) -> x -> Pipes.Producer b m () -> m x
 pipesFolder step start = Pipes.fold step start id
@@ -127,7 +127,7 @@ pipesFolder step start = Pipes.fold step start id
 
 pipesFromFoldable :: (Functor m, Foldable f) => f a -> Pipes.Producer a m ()
 pipesFromFoldable = Pipes.each
-{-# INLINE pipesFromFoldable #-}
+{-# INLINEABLE pipesFromFoldable #-}
 
 pipeStreamUncons :: Monad m => PipeStream m a -> m (Maybe (a, PipeStream m a))
 pipeStreamUncons p = do
@@ -155,4 +155,4 @@ unfoldViaBS :: MonadIO m => IO.Handle -> Pipes.Producer Text m ()
 unfoldViaBS h = do
   lbs <- Pipes.lift $ liftIO $ BL.hGetContents h
   unfoldViaBS' lbs >-> Pipes.map (Text.decodeUtf8 . BL.toStrict)
-{-# INLINE unfoldViaBS #-}
+{-# INLINEABLE unfoldViaBS #-}

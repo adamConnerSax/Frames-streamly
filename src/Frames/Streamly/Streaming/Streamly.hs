@@ -162,14 +162,14 @@ streamlyUnfoldTextLn = Streamly.Unfold.unfoldrM f where
     case tE of
       Left _ -> return Nothing
       Right t -> return $ Just (t, h)
-{-# INLINE streamlyUnfoldTextLn #-}
+{-# INLINEABLE streamlyUnfoldTextLn #-}
 
 
 streamlyReadTextLines :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m)
                       => (IO.Handle -> t m a) -> FilePath -> t m a
 streamlyReadTextLines f fp = Streamly.bracket (liftIO $ IO.openFile fp IO.ReadMode) (liftIO . IO.hClose) f
 --                           $ Streamly.unfold streamlyUnfoldTextLn
-{-# INLINE streamlyReadTextLines #-}
+{-# INLINEABLE streamlyReadTextLines #-}
 
 withFileLifted :: MC.MonadBaseControl IO m => FilePath -> IOMode -> (Handle -> m a) -> m a
 withFileLifted file mode action = MC.liftBaseWith (\runInBase -> withFile file mode (runInBase . action)) >>= MC.restoreM
@@ -182,7 +182,7 @@ streamlyReadScanMAndFold fp scanStep scanStart fld = withFileLifted fp IO.ReadMo
 
 streamlyThrowIfEmpty :: (IsStream t, MonadThrow m) => t m a -> m ()
 streamlyThrowIfEmpty s = Streamly.null (Streamly.adapt s) >>= flip when (throwM EmptyStreamException)
-{-# INLINE streamlyThrowIfEmpty #-}
+{-# INLINEABLE streamlyThrowIfEmpty #-}
 
 streamlyFolder :: (IsStream t, Monad m) => (x -> a -> x) -> x -> t m a -> m x
 streamlyFolder step start = Streamly.fold (streamlyBuildFold step start id) . Streamly.adapt
@@ -193,14 +193,14 @@ linesUsingSplitOn :: (IsStream t, MonadIO m) => IO.Handle -> t m Text
 linesUsingSplitOn h = Streamly.unfold Streamly.Handle.readChunks h
                       & Array.Stream.splitOnSuffix _lf
                       & Streamly.map (Text.decodeUtf8 . Streamly.BS.fromArray)
-{-# INLINE linesUsingSplitOn #-}
+{-# INLINEABLE linesUsingSplitOn #-}
 
 
 tokenized :: (IsStream t, MonadIO m) => Common.Separator -> Common.QuotingMode -> IO.Handle -> t m [Text]
 tokenized sep qm h = Streamly.unfold Streamly.Handle.readChunks h
                      & Array.Stream.splitOnSuffix _lf
                      & Streamly.map (Common.tokenizeRow sep qm . Text.decodeUtf8 . Streamly.BS.fromArray)
-{-# INLINE tokenized #-}
+{-# INLINEABLE tokenized #-}
 
 {-
 tokenized2 :: (IsStream t, Streamly.MonadAsync m) => Common.Separator -> Common.QuotingMode -> IO.Handle -> t m [Text]

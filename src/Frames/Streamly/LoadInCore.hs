@@ -30,7 +30,7 @@ loadInCore :: forall s m rs rs'.(StreamFunctionsIO s m, V.RMap rs, FS.StrictRead
            -> (Frames.Record rs -> Maybe (Frames.Record rs'))
            -> (IOSafe s m) (Frames.FrameRec rs')
 loadInCore po fp t = FS.inCoreAoS $ sMapMaybe t $ FS.readTableOpt @rs @s @m po fp
-{-# INLINE loadInCore #-}
+{-# INLINEABLE loadInCore #-}
 
 {-
 loadInCore2 :: forall s m rs rs'.(StreamFunctionsIO s m, V.RMap rs, FS.StrictReadRec rs, FS.RecVec rs, FS.RecVec rs')

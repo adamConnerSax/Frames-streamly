@@ -71,14 +71,14 @@ inCoreSoA_F = sBuildFoldM @s feed initial fin where
   fin (n, _, mvs') =
     do vs <- Frames.freezeRec (Proxy::Proxy rs) n mvs'
        return . (n,) $ Frames.produceRec (Proxy::Proxy rs) vs
-{-# INLINE inCoreSoA_F #-}
+{-# INLINEABLE inCoreSoA_F #-}
 
 -- | Perform the 'inCoreSoA_F' fold on a stream of records.
 inCoreSoA :: forall rs s m. (Prim.PrimMonad m, Frames.RecVec rs, StreamFunctions s m)
           => s m (Frames.Record rs)
           -> m (Int, Vinyl.Rec (((->) Int) Frames.:. Frames.ElField) rs)
 inCoreSoA = sFold (inCoreSoA_F @rs @s)
-{-# INLINE inCoreSoA #-}
+{-# INLINEABLE inCoreSoA #-}
 
 -- | Fold a stream of 'Vinyl' records into AoS (Array-of-Structures) form.
 inCoreAoS_F :: forall rs s m. (Prim.PrimMonad m, Frames.RecVec rs, StreamFunctions s m)
@@ -91,7 +91,7 @@ inCoreAoS :: forall m rs s. (Prim.PrimMonad m, Frames.RecVec rs, StreamFunctions
           => s m (Frames.Record rs)
           -> m (Frames.FrameRec rs)
 inCoreAoS = sFold (inCoreAoS_F @rs @s)
-{-# INLINE inCoreAoS #-}
+{-# INLINEABLE inCoreAoS #-}
 
 
 -- | More general AoS fold, allowing for a, possible column changing, transformation of the records while in SoA form.
@@ -100,7 +100,7 @@ inCoreAoS'_F ::  forall ss rs s m. (Prim.PrimMonad m, Frames.RecVec rs, StreamFu
              -> FoldType s m (Frames.Record rs) (Frames.FrameRec ss)
 inCoreAoS'_F f  = sMapFoldM @s (return . uncurry Frames.toAoS . aux) (inCoreSoA_F @rs @s)
   where aux (x,y) = (x, f y)
-{-# INLINE inCoreAoS'_F #-}
+{-# INLINEABLE inCoreAoS'_F #-}
 
 -- | Perform the more general AoS fold on a stream of records.
 inCoreAoS' ::  forall ss rs s m. (Prim.PrimMonad m, Frames.RecVec rs,  StreamFunctions s m)
@@ -108,4 +108,4 @@ inCoreAoS' ::  forall ss rs s m. (Prim.PrimMonad m, Frames.RecVec rs,  StreamFun
            -> s m (Frames.Record rs)
            -> m (Frames.FrameRec ss)
 inCoreAoS' f = sFold (inCoreAoS'_F @ss @rs @s f)
-{-# INLINE inCoreAoS' #-}
+{-# INLINEABLE inCoreAoS' #-}

@@ -164,11 +164,12 @@ framesParserOptionsForTokenizing (ParserOptions _ cs qm) = Frames.ParserOptions 
 -- | A sensible default *only* for situations when all columns should be parsed.
 defaultParser :: ParserOptions
 defaultParser = ParserOptions (ICSV.ParseAll True) (CharSeparator ',') (RFC4180Quoting '\"')
-{-# INLINE defaultParser #-}
+{-# INLINEABLE defaultParser #-}
 
 -- | Write a stream of Text to file at FilePath
 writeLines :: StreamFunctionsIO s m => FilePath -> s (IOSafe s m) Text -> m ()
 writeLines = sWriteTextLines
+{-# INLINEABLE writeLines #-}
 
 -- | Given a stream of @Records@, for which all fields satisfy the `ShowCSV` constraint,
 -- produce a stream of `Text`, one item (line) per `Record` with the specified separator
@@ -230,6 +231,7 @@ streamCSV
   => f (Frames.Record rs)  -- ^ 'Foldable' of Records
   -> s m T.Text -- ^ stream of 'Text' rows
 streamCSV = streamSV ","
+{-# INLINEABLE streamCSV #-}
 
 -- | Convert @Rec@s to lines of `Text` using a class (which must have an instance
 -- for each type in the record) to covert each field to `Text`.
@@ -264,7 +266,7 @@ svLineClass toTxt sep = T.intercalate sep . Vinyl.recordToList . Vinyl.rmapMetho
       => Vinyl.ElField a
       -> Vinyl.Const T.Text a
   aux (Vinyl.Field x) = Vinyl.Const $ toTxt x
-{-# INLINE svLineClass #-}
+{-# INLINEABLE svLineClass #-}
 
 
 -- | Given a record of functions to map each field to Text,
@@ -298,7 +300,7 @@ svLine :: forall rs f.
        -> Frames.Rec f rs
        -> T.Text
 svLine toTextRec sep = T.intercalate sep . Vinyl.recordToList . Vinyl.rapply toTextRec
-{-# INLINE svLine #-}
+{-# INLINEABLE svLine #-}
 
 -- | Convert a streamly stream into a (lazy) list
 streamToList :: StreamFunctions s m => s m a -> m [a]
@@ -714,25 +716,25 @@ parseOne :: (V.RMap rs
             )
          => Maybe [Bool] -> [Text] -> Strict.Maybe (Frames.Record rs)
 parseOne rF t = maybe Strict.Nothing Strict.Just $! Frames.recMaybe $! doParseStrict $! useRowFilter rF t
-{-# INLINE parseOne #-}
+{-# INLINEABLE parseOne #-}
 
 -- | Parse using StrictReadRec
 doParseStrict :: (V.RMap rs, StrictReadRec rs) => [Text] -> V.Rec (Maybe V.:. V.ElField) rs
 doParseStrict !x = recStrictEitherToMaybe $! strictReadRec x
-{-# INLINE doParseStrict #-}
+{-# INLINEABLE doParseStrict #-}
 
 
 recEitherToMaybe :: Vinyl.RMap rs => Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs -> Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs
 recEitherToMaybe = Vinyl.rmap (either (const (Vinyl.Compose Nothing)) (Vinyl.Compose . Just) . Vinyl.getCompose)
-{-# INLINE recEitherToMaybe #-}
+{-# INLINEABLE recEitherToMaybe #-}
 
 recStrictEitherToMaybe :: Vinyl.RMap rs => Vinyl.Rec (Strict.Either T.Text Vinyl.:. Vinyl.ElField) rs -> Vinyl.Rec (Maybe Vinyl.:. Vinyl.ElField) rs
 recStrictEitherToMaybe = Vinyl.rmap (Strict.either (const (Vinyl.Compose Nothing)) (Vinyl.Compose . Just) . Vinyl.getCompose)
-{-# INLINE recStrictEitherToMaybe #-}
+{-# INLINEABLE recStrictEitherToMaybe #-}
 
 recUnStrictEither :: Vinyl.RMap rs => Vinyl.Rec (Strict.Either T.Text Vinyl.:. Vinyl.ElField) rs -> Vinyl.Rec (Either T.Text Vinyl.:. Vinyl.ElField) rs
 recUnStrictEither = Vinyl.rmap (Vinyl.Compose . Strict.either Left Right . Vinyl.getCompose)
-{-# INLINE recUnStrictEither #-}
+{-# INLINEABLE recUnStrictEither #-}
 {-
 -- | Convert a stream of Word8 to lines of `Text` by decoding as UTF8 and splitting on "\n"
 word8ToTextLines :: (IsStream t, MonadIO m) => t m Word8 -> t m T.Text
