@@ -62,7 +62,7 @@ library
     , exceptions >=0.10.0 && <0.11
     , foldl >= 1.4.0 && < 1.5
 --    , fusion-plugin >= 0.2.2 && < 0.3
-    , ghc-prim >= 0.6 && < 0.8
+    , ghc-prim >= 0.6 && < 0.9
     , monad-control >= 1.0.1 && < 1.1
     , pipes >= 4.3.14 && <4.4
 --    , pipes-bytestring >= 2.1.6 && < 2.2
