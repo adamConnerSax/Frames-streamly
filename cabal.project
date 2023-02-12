@@ -3,7 +3,7 @@ jobs: 4
 with-compiler: ghc
 
 -- for ghc 9.2
-allow-newer: base, ghc-prim, template-haskell, bytestring
+allow-newer: base, ghc-prim, template-haskell, bytestring, hashable
 
 source-repository-package
   type: git
