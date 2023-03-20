@@ -37,19 +37,20 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as Text
 import Data.Word8 (_lf)
 
-import qualified Streamly.Data.Fold                     as Streamly.Fold
 #if MIN_VERSION_streamly(0,9,0)
+import qualified Streamly.Data.Fold              as Streamly.Fold
 import Streamly.Data.Stream (Stream)
 import qualified Streamly.Data.Stream as Streamly
 import qualified Streamly.Data.StreamK as StreamK
-import qualified Streamly.Internal.FileSystem.File      as Streamly.File
+import qualified Streamly.FileSystem.File      as Streamly.File
 import qualified Streamly.Unicode.Stream           as Unicode
-import qualified Streamly.Internal.Data.Unfold          as Streamly.Unfold
+import qualified Streamly.Data.Unfold          as Streamly.Unfold
 import qualified Streamly.FileSystem.Handle    as Streamly.Handle
 import qualified Streamly.Internal.Data.Stream.Chunked as Array.Stream
 import qualified Streamly.External.ByteString as Streamly.BS
 #elif MIN_VERSION_streamly(0,8,0)
 import qualified Streamly.Prelude                       as Streamly
+import qualified Streamly.Data.Fold                     as Streamly.Fold
 import qualified Streamly.Internal.FileSystem.File      as Streamly.File
 import qualified Streamly.Internal.FileSystem.Handle    as Streamly.Handle
 import qualified Streamly.Internal.Data.Unfold          as Streamly.Unfold
@@ -61,6 +62,7 @@ import qualified Streamly.Internal.Data.Stream.StreamD.Generate as StreamD
 import qualified Streamly.Internal.Data.Stream.StreamD.Type as StreamD
 import qualified Streamly.Internal.Data.Stream.StreamD.Transform as StreamD
 #else
+
 import qualified Streamly                               as Streamly
 import           Streamly                                ( IsStream, SerialT )
 import qualified Streamly.Data.Unicode.Stream           as Streamly.Unicode
