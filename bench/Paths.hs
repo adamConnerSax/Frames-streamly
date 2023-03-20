@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -60,7 +61,8 @@ ffNewRowGenP fp = rg  { FStreamly.rowTypeName = "FFNew"
   where
     rg = FStreamly.rowGen (thPath forestFiresPath)
 
-ffNewRowGenS :: FilePath -> FStreamly.RowGen (StreamS.StreamlyStream StreamS.SerialT) 'FStreamly.ColumnByName Frames.CommonColumns
+
+ffNewRowGenS :: FilePath -> FStreamly.RowGen (FStreamly.DefaultStream) 'FStreamly.ColumnByName Frames.CommonColumns
 ffNewRowGenS fp = rg
                   { FStreamly.rowTypeName = "FFNew"
                   , FStreamly.lineReader = \sep -> sTokenized sep (FStreamly.quotingMode rg) fp --FStreamly.streamTokenized' @(StreamS.StreamlyStream StreamS.SerialT) @IO fp

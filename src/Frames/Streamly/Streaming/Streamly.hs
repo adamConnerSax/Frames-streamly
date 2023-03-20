@@ -11,12 +11,17 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE InstanceSigs #-}
 module Frames.Streamly.Streaming.Streamly
   (
     StreamlyStream(..)
     -- * re-exports
+#if MIN_VERSION_streamly(0,9,0)
+  , Stream
+#else
   , SerialT
   , IsStream
+#endif
   )
 where
 
@@ -32,14 +37,23 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as Text
 import Data.Word8 (_lf)
 
-
-import qualified Streamly.Prelude                       as Streamly
 import qualified Streamly.Data.Fold                     as Streamly.Fold
+#if MIN_VERSION_streamly(0,9,0)
+import Streamly.Data.Stream (Stream)
+import qualified Streamly.Data.Stream as Streamly
+import qualified Streamly.Data.StreamK as StreamK
+import qualified Streamly.Internal.FileSystem.File      as Streamly.File
+import qualified Streamly.Unicode.Stream           as Unicode
+import qualified Streamly.Internal.Data.Unfold          as Streamly.Unfold
+import qualified Streamly.FileSystem.Handle    as Streamly.Handle
+import qualified Streamly.Internal.Data.Stream.Chunked as Array.Stream
+import qualified Streamly.External.ByteString as Streamly.BS
+#elif MIN_VERSION_streamly(0,8,0)
+import qualified Streamly.Prelude                       as Streamly
 import qualified Streamly.Internal.FileSystem.File      as Streamly.File
 import qualified Streamly.Internal.FileSystem.Handle    as Streamly.Handle
 import qualified Streamly.Internal.Data.Unfold          as Streamly.Unfold
 import qualified Streamly.External.ByteString as Streamly.BS
-#if MIN_VERSION_streamly(0,8,0)
 import Streamly.Prelude                       (IsStream, SerialT)
 import qualified Streamly.Unicode.Stream           as Unicode
 import qualified Streamly.Internal.Data.Array.Stream.Foreign as Array.Stream
@@ -59,6 +73,30 @@ import GHC.IO.Exception (IOException)
 
 newtype StreamlyStream (t ::  (Type -> Type) -> Type -> Type) m a = StreamlyStream { stream :: t m a }
 
+#if  MIN_VERSION_streamly(0,9,0)
+instance (Monad m) => StreamFunctions (StreamlyStream Streamly.Stream) m where
+  type FoldType (StreamlyStream Streamly.Stream) = Streamly.Fold.Fold
+  sThrowIfEmpty = streamlyThrowIfEmpty . stream
+  sLength = Streamly.fold Streamly.Fold.length . stream
+  sCons a = StreamlyStream . Streamly.cons a . stream
+  sUncons = streamlyStreamUncons
+  sHead = Streamly.fold Streamly.Fold.one . stream
+  sMap f = StreamlyStream . fmap f . stream
+  sMapMaybe f = StreamlyStream . Streamly.mapMaybe f . stream
+  sScanM step start = StreamlyStream . Streamly.scan (Streamly.Fold.foldlM' step start) . stream
+  sDrop :: Monad m => Int -> StreamlyStream Streamly.Stream m a -> StreamlyStream Streamly.Stream m a
+  sDrop n = StreamlyStream . Streamly.drop n . stream
+  sTake n = StreamlyStream . Streamly.take n . stream
+  sFolder step start = streamlyFolder step start . stream
+  sBuildFold = streamlyBuildFold
+  sBuildFoldM = streamlyBuildFoldM
+  sMapFoldM = Streamly.Fold.rmapM
+  sLMapFoldM = Streamly.Fold.lmapM
+  sFoldMaybe = Streamly.Fold.catMaybes
+  sFold fld  = Streamly.fold fld . stream
+  sToList = Streamly.toList . stream -- this might be bad (not lazy) compared to streamly
+  sFromFoldable = StreamlyStream . StreamK.toStream . StreamK.fromFoldable
+#else
 instance (IsStream t, Monad m) => StreamFunctions (StreamlyStream t) m where
   type FoldType (StreamlyStream t) = Streamly.Fold.Fold
   sThrowIfEmpty = streamlyThrowIfEmpty . stream
@@ -80,7 +118,7 @@ instance (IsStream t, Monad m) => StreamFunctions (StreamlyStream t) m where
   sFold fld  = Streamly.fold fld . Streamly.adapt . stream
   sToList = Streamly.toList . Streamly.adapt . stream -- this might be bad (not lazy) compared to streamly
   sFromFoldable = StreamlyStream . Streamly.fromFoldable
-
+#endif
   {-# INLINEABLE sThrowIfEmpty #-}
   {-# INLINEABLE sLength #-}
   {-# INLINEABLE sCons #-}
@@ -101,6 +139,15 @@ instance (IsStream t, Monad m) => StreamFunctions (StreamlyStream t) m where
   {-# INLINEABLE sToList #-}
   {-# INLINEABLE sFromFoldable #-}
 
+#if  MIN_VERSION_streamly(0,9,0)
+instance (MonadCatch m, MonadIO m, PrimMonad m, MC.MonadBaseControl IO m) => StreamFunctionsIO (StreamlyStream Streamly.Stream) m where
+  type IOSafe (StreamlyStream Streamly.Stream) m = m
+  runSafe = id
+  sReadTextLines = StreamlyStream . streamlyReadTextLines linesUsingSplitOn
+  sTokenized sep qm = StreamlyStream . streamlyReadTextLines (tokenized sep qm)
+  sReadScanMAndFold = streamlyReadScanMAndFold
+  sWriteTextLines fp = streamlyWriteTextLines fp . stream
+#else
 instance (IsStream t, Streamly.MonadAsync m, MonadCatch m, PrimMonad m) => StreamFunctionsIO (StreamlyStream t) m where
   type IOSafe (StreamlyStream t) m = m
   runSafe = id
@@ -108,19 +155,28 @@ instance (IsStream t, Streamly.MonadAsync m, MonadCatch m, PrimMonad m) => Strea
   sTokenized sep qm = StreamlyStream . streamlyReadTextLines (tokenized sep qm)
   sReadScanMAndFold = streamlyReadScanMAndFold
   sWriteTextLines fp = streamlyWriteTextLines fp . stream
-
+#endif
   {-# INLINEABLE runSafe #-}
   {-# INLINEABLE sReadTextLines #-}
   {-# INLINEABLE sTokenized #-}
   {-# INLINEABLE sReadScanMAndFold #-}
   {-# INLINEABLE sWriteTextLines #-}
 
+#if  MIN_VERSION_streamly(0,9,0)
+streamlyStreamUncons :: Monad m => StreamlyStream Streamly.Stream m a -> m (Maybe (a, StreamlyStream Streamly.Stream m a))
+streamlyStreamUncons s = do
+  unc <- Streamly.uncons (stream s)
+  case unc of
+    Nothing -> return Nothing
+    Just (a, s') -> return $ Just (a, StreamlyStream s')
+#else
 streamlyStreamUncons :: (IsStream t, Monad m) => StreamlyStream t m a -> m (Maybe (a, StreamlyStream t m a))
 streamlyStreamUncons s = do
   unc <- Streamly.uncons (Streamly.adapt $ stream s)
   case unc of
     Nothing -> return Nothing
     Just (a, s') -> return $ Just (a, StreamlyStream s')
+#endif
 {-# INLINABLE streamlyStreamUncons #-}
 
 streamlyBuildFold :: Monad m => (x -> a -> x) -> x -> (x -> b) -> Streamly.Fold.Fold m a b
@@ -137,7 +193,11 @@ streamlyBuildFoldM step start extract = Streamly.Fold.rmapM  extract $ Streamly.
 streamlyBuildFoldM step start extract = Streamly.Fold.mkFold step start extract
 #endif
 
+#if  MIN_VERSION_streamly(0,9,0)
+streamlyWriteTextLines :: (MonadCatch m, MonadIO m) => FilePath -> Streamly.Stream m Text -> m ()
+#else
 streamlyWriteTextLines :: (IsStream s, Streamly.MonadAsync m, MonadCatch m) => FilePath -> s m Text -> m ()
+#endif
 streamlyWriteTextLines fp s = do
 #if MIN_VERSION_streamly(0,8,0)
   let unfoldMany = Streamly.unfoldMany
@@ -146,9 +206,14 @@ streamlyWriteTextLines fp s = do
 #endif
   Streamly.fold (Streamly.File.write fp)
     $ Unicode.encodeUtf8
+#if MIN_VERSION_streamly(0,9,0)
+    $ unfoldMany Streamly.Unfold.fromList
+    $ fmap T.unpack
+#else
     $ Streamly.adapt
     $ unfoldMany Streamly.Unfold.fromList
     $ Streamly.map T.unpack
+#endif
     $ Streamly.intersperse "\n" s
 {-# INLINEABLE streamlyWriteTextLines #-}
 
@@ -164,42 +229,74 @@ streamlyUnfoldTextLn = Streamly.Unfold.unfoldrM f where
       Right t -> return $ Just (t, h)
 {-# INLINEABLE streamlyUnfoldTextLn #-}
 
-
+#if MIN_VERSION_streamly(0,9,0)
+streamlyReadTextLines :: (MonadCatch m, MonadIO m)
+                      => (IO.Handle -> Streamly.Stream m a) -> FilePath -> Streamly.Stream m a
+streamlyReadTextLines f fp = Streamly.bracketIO (liftIO $ IO.openFile fp IO.ReadMode) (liftIO . IO.hClose) f
+#else
 streamlyReadTextLines :: (Streamly.IsStream t, Streamly.MonadAsync m, MonadCatch m)
                       => (IO.Handle -> t m a) -> FilePath -> t m a
 streamlyReadTextLines f fp = Streamly.bracket (liftIO $ IO.openFile fp IO.ReadMode) (liftIO . IO.hClose) f
---                           $ Streamly.unfold streamlyUnfoldTextLn
+#endif
 {-# INLINEABLE streamlyReadTextLines #-}
 
 withFileLifted :: MC.MonadBaseControl IO m => FilePath -> IOMode -> (Handle -> m a) -> m a
 withFileLifted file mode action = MC.liftBaseWith (\runInBase -> withFile file mode (runInBase . action)) >>= MC.restoreM
 {-# INLINEABLE withFileLifted #-}
 
+#if MIN_VERSION_streamly(0,9,0)
+streamlyReadScanMAndFold :: (MC.MonadBaseControl IO m, MonadIO m) => FilePath -> (x -> Text -> m x) -> m x -> Streamly.Fold.Fold m x b -> m b
+streamlyReadScanMAndFold fp scanStep scanStart fld = withFileLifted fp IO.ReadMode
+  $ Streamly.fold fld . Streamly.scan (Streamly.Fold.foldlM' scanStep scanStart) . Streamly.unfold streamlyUnfoldTextLn
+#else
 streamlyReadScanMAndFold :: Streamly.MonadAsync m => FilePath -> (x -> Text -> m x) -> m x -> Streamly.Fold.Fold m x b -> m b
 streamlyReadScanMAndFold fp scanStep scanStart fld = withFileLifted fp IO.ReadMode
   $ StreamD.fold fld . StreamD.scanlM' scanStep scanStart . StreamD.unfold streamlyUnfoldTextLn
+#endif
 {-# INLINEABLE streamlyReadScanMAndFold #-}
 
+#if MIN_VERSION_streamly(0,9,0)
+streamlyThrowIfEmpty :: (MonadThrow m) => Streamly.Stream m a -> m ()
+streamlyThrowIfEmpty s = Streamly.fold Streamly.Fold.null s >>= flip when (throwM EmptyStreamException)
+#else
 streamlyThrowIfEmpty :: (IsStream t, MonadThrow m) => t m a -> m ()
 streamlyThrowIfEmpty s = Streamly.null (Streamly.adapt s) >>= flip when (throwM EmptyStreamException)
+#endif
 {-# INLINEABLE streamlyThrowIfEmpty #-}
 
+#if MIN_VERSION_streamly(0,9,0)
+streamlyFolder :: Monad m => (x -> a -> x) -> x -> Streamly.Stream m a -> m x
+streamlyFolder step start = Streamly.fold (streamlyBuildFold step start id)
+#else
 streamlyFolder :: (IsStream t, Monad m) => (x -> a -> x) -> x -> t m a -> m x
 streamlyFolder step start = Streamly.fold (streamlyBuildFold step start id) . Streamly.adapt
+#endif
 {-# INLINABLE streamlyFolder #-}
 
-
+#if MIN_VERSION_streamly(0,9,0)
+linesUsingSplitOn :: MonadIO m => IO.Handle -> Streamly.Stream m Text
+linesUsingSplitOn h = Streamly.unfold Streamly.Handle.chunkReader h
+                      & Array.Stream.splitOnSuffix _lf
+                      & fmap (Text.decodeUtf8 . Streamly.BS.fromArray)
+#else
 linesUsingSplitOn :: (IsStream t, MonadIO m) => IO.Handle -> t m Text
 linesUsingSplitOn h = Streamly.unfold Streamly.Handle.readChunks h
                       & Array.Stream.splitOnSuffix _lf
                       & Streamly.map (Text.decodeUtf8 . Streamly.BS.fromArray)
+#endif
 {-# INLINEABLE linesUsingSplitOn #-}
 
-
+#if MIN_VERSION_streamly(0,9,0)
+tokenized :: MonadIO m => Common.Separator -> Common.QuotingMode -> IO.Handle -> Streamly.Stream m [Text]
+tokenized sep qm h = Streamly.unfold Streamly.Handle.chunkReader h
+                     & Array.Stream.splitOnSuffix _lf
+                     & fmap (Common.tokenizeRow sep qm . Text.decodeUtf8 . Streamly.BS.fromArray)
+#else
 tokenized :: (IsStream t, MonadIO m) => Common.Separator -> Common.QuotingMode -> IO.Handle -> t m [Text]
 tokenized sep qm h = Streamly.unfold Streamly.Handle.readChunks h
                      & Array.Stream.splitOnSuffix _lf
                      & Streamly.map (Common.tokenizeRow sep qm . Text.decodeUtf8 . Streamly.BS.fromArray)
+#endif
 {-# INLINEABLE tokenized #-}
 
 {-

@@ -3,17 +3,17 @@ jobs: 4
 with-compiler: ghc
 
 -- for ghc 9.2
-allow-newer: base, ghc-prim, template-haskell, bytestring, hashable
+--allow-newer: base, ghc-prim, template-haskell, bytestring, hashable
+allow-newer: Frames:base, Frames:ghc-prim
+--source-repository-package
+--  type: git
+--  location: https://github.com/sullyj3/relude
+--  tag: 8f7e3a3be033fe11dbd00ebcf5cd7b00d1e459b6
 
-source-repository-package
-  type: git
-  location: https://github.com/sullyj3/relude
-  tag: 8f7e3a3be033fe11dbd00ebcf5cd7b00d1e459b6
-
-source-repository-package
-  type: git
-  location:https://github.com/hasktorch/pipes-text
-  tag: d4805e84327e266daa730d23982db3172f226cac
+--source-repository-package
+--  type: git
+--  location:https://github.com/hasktorch/pipes-text
+--  tag: d4805e84327e266daa730d23982db3172f226cac
 
 
 

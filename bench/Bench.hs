@@ -211,11 +211,11 @@ main = do
   defaultMain [
 {-
   bgroup "loadAndCountRecs (500)" [ bench "Pipes" $ nfIO (loadAndCountRecs @StreamP.PipeStream 500)
-                              , bench "Streamly" $ nfIO (loadAndCountRecs @(StreamS.StreamlyStream StreamS.SerialT) 500)
+                              , bench "Streamly" $ nfIO (loadAndCountRecs @(FStreamly.DefaultStream) 500)
                               , bench "Frames" $ nfIO (loadAndCountRecsF 500)
                               ]
   , bgroup "loadAndTransform (500)" [ bench "Pipes" $ nfIO (loadAndTransform @StreamP.PipeStream 500)
-                                    , bench "Streamly" $ nfIO (loadAndTransform @(StreamS.StreamlyStream StreamS.SerialT) 500)
+                                    , bench "Streamly" $ nfIO (loadAndTransform @(FStreamly.DefaultStream) 500)
                                     , bench "Frames" $ nfIO (loadAndTransformF 500)
                               ]
 
@@ -228,55 +228,55 @@ main = do
                                    ]
 
     , bgroup "loadAndCountLines (5000)" [ bench "Pipes" $ nfIO $ loadAndCountLines @StreamP.PipeStream 5000
-                                        , bench "Streamly" $ nfIO $ loadAndCountLines @(StreamS.StreamlyStream StreamS.SerialT) 5000]
+                                        , bench "Streamly" $ nfIO $ loadAndCountLines @(FStreamly.DefaultStream) 5000]
     , bgroup "loadTokenizeAndCountCells (5000)" [ bench "Pipes" $ nfIO $ loadTokenizeAndCountCells @StreamP.PipeStream 5000
-                                                , bench "Streamly" $ nfIO $ loadTokenizeAndCountCells @(StreamS.StreamlyStream StreamS.SerialT) 5000]
+                                                , bench "Streamly" $ nfIO $ loadTokenizeAndCountCells @(FStreamly.DefaultStream) 5000]
 
     , bgroup "loadAndCountRecs (5000)" [ bench "Pipes" $ nfIO (loadAndCountRecs @StreamP.PipeStream 5000)
-                                   , bench "Streamly" $ nfIO (loadAndCountRecs @(StreamS.StreamlyStream StreamS.SerialT) 5000)
+                                   , bench "Streamly" $ nfIO (loadAndCountRecs @(FStreamly.DefaultStream) 5000)
                                    ]
     , bgroup "loadAndCountFrame (5000)" [ bench "Pipes" $ nfIO (loadAndCountFrame @StreamP.PipeStream 5000)
-                                        , bench "Streamly" $ nfIO (loadAndCountFrame @(StreamS.StreamlyStream StreamS.SerialT) 5000)
+                                        , bench "Streamly" $ nfIO (loadAndCountFrame @(FStreamly.DefaultStream) 5000)
                                         , bench "Frames" $ nfIO (loadAndCountFrameF 5000)
                                         ]
     , bgroup "loadAndTransform (5000)" [ bench "Pipes" $ nfIO (loadAndTransform @StreamP.PipeStream 5000)
-                                       , bench "Streamly" $ nfIO (loadAndTransform @(StreamS.StreamlyStream StreamS.SerialT) 5000)
+                                       , bench "Streamly" $ nfIO (loadAndTransform @(FStreamly.DefaultStream) 5000)
                                        , bench "Frames" $ nfIO (loadAndTransformF 5000)
                                        ]
     , bgroup "loadInCore (5000)" [ bench "Pipes" $ nfIO (loadInCore @StreamP.PipeStream 5000)
-                                 , bench "Streamly" $ nfIO (loadInCore @(StreamS.StreamlyStream StreamS.SerialT) 5000)
+                                 , bench "Streamly" $ nfIO (loadInCore @(FStreamly.DefaultStream) 5000)
                                  ]
 {-
     , bgroup "loadInCore2 (5000)" [ bench "Pipes" $ nfIO (loadInCore2 @StreamP.PipeStream 5000)
-                                  , bench "Streamly" $ nfIO (loadInCore2 @(StreamS.StreamlyStream StreamS.SerialT) 5000)
+                                  , bench "Streamly" $ nfIO (loadInCore2 @(FStreamly.DefaultStream) 5000)
                                   ]
   , bgroup "loadAndCountRecs (50000)" [ bench "Pipes" $ nfIO (loadAndCountRecs @StreamP.PipeStream 50000)
-                                  , bench "Streamly" $ nfIO (loadAndCountRecs @(StreamS.StreamlyStream StreamS.SerialT) 50000)
+                                  , bench "Streamly" $ nfIO (loadAndCountRecs @(FStreamly.DefaultStream) 50000)
                                   , bench "Frames" $ nfIO (loadAndCountRecsF 50000)
                                   ]
   , bgroup "loadAndTransform (50000)" [ bench "Pipes" $ nfIO (loadAndTransform @StreamP.PipeStream 50000)
-                                      , bench "Streamly" $ nfIO (loadAndTransform @(StreamS.StreamlyStream StreamS.SerialT) 50000)
+                                      , bench "Streamly" $ nfIO (loadAndTransform @(FStreamly.DefaultStream) 50000)
                                       , bench "Frames" $ nfIO (loadAndTransformF 50000)
                                     ]
 -}
     , bgroup "colSubset (5000)" [ bench "Pipes/load-subset" $ nfIO (loadSubset @StreamP.PipeStream 5000)
                                 , bench "Pipes/rcast" $ nfIO (rcastSubset @StreamP.PipeStream 5000)
-                                , bench "Streamly/load-subset" $ nfIO (loadSubset @(StreamS.StreamlyStream StreamS.SerialT) 5000)
-                                , bench "Streamly/rcast" $ nfIO (rcastSubset @(StreamS.StreamlyStream StreamS.SerialT) 5000)
+                                , bench "Streamly/load-subset" $ nfIO (loadSubset @(FStreamly.DefaultStream) 5000)
+                                , bench "Streamly/rcast" $ nfIO (rcastSubset @(FStreamly.DefaultStream) 5000)
                                 ]
 
     , bgroup "custom-parsing (5000)" [ bench "Pipes/load-parsed" $ nfIO (loadTypedSubset @StreamP.PipeStream 5000)
                                      , bench "Pipes/parseAfter v1" $ nfIO (loadSubsetAndRetype @StreamP.PipeStream retype1 5000)
                                      , bench "Pipes/parseAfter v2" $ nfIO (loadSubsetAndRetype @StreamP.PipeStream retype2 5000)
-                                     , bench "Streamly/load-parsed" $ nfIO (loadTypedSubset @(StreamS.StreamlyStream StreamS.SerialT) 5000)
-                                     , bench "Streamly/parseAfter v1" $ nfIO (loadSubsetAndRetype @(StreamS.StreamlyStream StreamS.SerialT) retype1 5000)
-                                     , bench "Streamly/parseAfter v2" $ nfIO (loadSubsetAndRetype @(StreamS.StreamlyStream StreamS.SerialT) retype2 5000)
+                                     , bench "Streamly/load-parsed" $ nfIO (loadTypedSubset @(FStreamly.DefaultStream) 5000)
+                                     , bench "Streamly/parseAfter v1" $ nfIO (loadSubsetAndRetype @(FStreamly.DefaultStream) retype1 5000)
+                                     , bench "Streamly/parseAfter v2" $ nfIO (loadSubsetAndRetype @(FStreamly.DefaultStream) retype2 5000)
                                      ]
 
 
   {-
   , bgroup "loadAndCountRecs (500000)" [ bench "Pipes" $ nfIO (loadAndCountRecs @StreamP.PipeStream 500000)
-                                   , bench "Streamly" $ nfIO (loadAndCountRecs @(StreamS.StreamlyStream StreamS.SerialT) 500000)
+                                   , bench "Streamly" $ nfIO (loadAndCountRecs @(FStreamly.DefaultStream) 500000)
                                    , bench "Frames" $ nfIO (loadAndCountRecsF 500000)
                                    ]
 -}

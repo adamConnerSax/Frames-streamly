@@ -60,8 +60,11 @@ module Frames.Streamly.TH
 where
 
 import Prelude hiding (lift)
-
+#if MIN_VERSION_streamly(0,9,0)
+import Frames.Streamly.Streaming.Streamly (StreamlyStream, Stream)
+#else
 import Frames.Streamly.Streaming.Streamly (StreamlyStream, SerialT)
+#endif
 import Frames.Streamly.Streaming.Pipes (PipeStream)
 import Frames.Streamly.Streaming.Class
 import Frames.Streamly.Streaming.Common (Separator(..))
@@ -91,8 +94,11 @@ import Language.Haskell.TH.Syntax hiding (Type)
 
 
 --type DefaultStream = StreamlyStream SerialT
+#if MIN_VERSION_streamly(0,9,0)
+type DefaultStream = StreamlyStream Stream
+#else
 type DefaultStream = StreamlyStream SerialT
-
+#endif
 
 -- | Generate a column type.
 recDec :: [TH.Type] -> TH.Type
