@@ -1,8 +1,15 @@
-# Frames-streamly- v 0.1.2.0
+# Frames-streamly- v 0.3.1
 
 [![Build Status][travis-badge]][travis]
 [![Hackage][hackage-badge]][hackage]
 [![Hackage Dependencies][hackage-deps-badge]][hackage-deps]
+
+* Added Flag “streamly9”. To use streamly >= 0.9, set that flag to true.
+The flag will put a *lower-bound* of 0.9 on streamly.
+When the flag is false (the default), an upper bound of < 0.9 will be in place
+for streamly. Streamly changed the library structure between 0.8.x and 0.9.x
+in such a way that it is difficult to write this package in a way compatible with
+both sets of versions.
 
 * Breaking Change (from 0.1.0.2):  Some streaming functions
 use the ```StrictReadRec``` class, a stricter version of
@@ -13,6 +20,10 @@ This library contains some useful functions for using the
 [Frames](https://hackage.haskell.org/package/Frames)
 package with [streamly](https://hackage.haskell.org/package/streamly).
 
+More generally, it abstracts the streaming layer in Frames into a class
+and implements that class for [Pipes](https://hackage.haskell.org/package/pipes)
+and Streamly.
+
 Frames has some built-in dependencies on the
 [Pipes](https://hackage.haskell.org/package/pipes) package,
 a few of which--primarily file I/O-- require users of Frames to use
@@ -20,8 +31,7 @@ the Pipes package explicitly.  Streamly provides much of the same
 functionality as Pipes and may be some users preferred streaming
 interface.
 
-This package replicates all the external-facing bits of Frames that
-rely on Pipes and uses streamly instead.  It also fleshes out the Frames
+This package also fleshes out the Frames
 API in a couple of places:
 
 1. It adds some flexibility to the functions to write CSV files.
@@ -60,8 +70,21 @@ a map/reduce on a large data set and you want to store the
 grouped subsets as Frames for memory-efficiency.  These folds
 make that simpler.
 
+4. There is some experimental support for more flexible loading of data
+from CSV. New features include:
+* Choosing of specific columns to load (by position or header text)
+* Renaming of columns before the header text is used to create a column type.
+* Improved handling of type-inference of columns with possibly missing data,
+allowing the user a choice between inference based on non-missing values
+leading to loading failure if missing values are encountered; inferring
+```Maybe a``` where ```a``` is inferred from the non-missing values, thus
+succesfully loading data where some values in the column are missing; or
+an option to choose between the above depending on whether any missing data
+is encountered in the sample Frames uses for inference.
+Please see some examples [here](https://github.com/adamConnerSax/Frames-streamly/blob/master/test/DemoPaths.hs).
 
-An example using some of the utilities is [here](https://github.com/adamConnerSax/Frames-streamly/blob/master/examples/Main.hs).
+
+More examples using some of the utilities is [here](https://github.com/adamConnerSax/Frames-streamly/blob/master/examples/Main.hs).
 _______
 
 LICENSE (BSD-3-Clause)

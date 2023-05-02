@@ -1,3 +1,7 @@
+v0.3.1
+* Added code/cabal bounds (behind “streamly9” flag) for >= streamly-0.9
+* Bumped various upper bounds in cabal file
+
 v0.3.0.0
 * Changed API so tokenizing is handled when the file is read.  This changes various library function signatures.
 
