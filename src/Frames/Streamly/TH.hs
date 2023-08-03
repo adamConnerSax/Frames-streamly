@@ -248,6 +248,10 @@ data RowGen (s :: (Type -> Type) -> Type -> Type) (b :: ColumnId) (a :: [Type]) 
          , lineReader :: SCSV.Separator -> s (IOSafe s IO) [Text]
            -- ^ A producer of rows of ’T.Text’ values that were
            -- separated by a 'Separator' value.
+         , filePath :: FilePath
+           -- ^ the file path so we can add it to template haskell's
+           -- dependencies for recompilation
+
          }
 
 defaultIsMissing :: Text -> Bool
@@ -269,6 +273,7 @@ rowGen' fp = RowGen
   1000
   defaultIsMissing
   (\sep -> sTokenized @s @IO sep SCSV.defaultQuotingMode fp)
+  fp
 {-# INLINEABLE rowGen' #-}
 
 -- | A default 'RowGen'. This instructs the type inference engine to
@@ -304,6 +309,7 @@ rowGenCat' fp = RowGen
   1000
   defaultIsMissing
   (\sep -> sTokenized @s @IO sep SCSV.defaultQuotingMode fp)
+  fp
 {-# INLINEABLE rowGenCat' #-}
 
 -- | Like 'rowGen', but will also generate custom data types for
@@ -486,6 +492,7 @@ tableTypesText' :: forall s b a.StreamFunctionsIO s IO
                 => RowGen s b a
                 -> DecsQ
 tableTypesText' RowGen {..} = do
+  addDependentFile filePath
   firstRow <- runIO $ runSafe @s $ colNamesP $ lineReader separator
   let (allColStates, pch) = case genColumnSelector of
         ICSV.GenUsingHeader f _ ->
@@ -533,6 +540,7 @@ tableTypes' :: forall ts b s.
                , StreamFunctionsIO s IO)
             => RowGen s b ts -> DecsQ
 tableTypes' RowGen {..} = do
+  addDependentFile filePath
   (typedCols, pch) <- runIO
                       $ runSafe @s
                       $ SCSV.readColHeaders columnParsers genColumnSelector lineSource :: Q ([SCSV.ColTypeInfo (FSCU.ColType ts)], ICSV.ParseColumnSelector)
