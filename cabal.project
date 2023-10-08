@@ -2,4 +2,4 @@ packages: ./
 jobs: 4
 with-compiler: ghc
 
-allow-newer: Frames:base, Frames:ghc-prim
+allow-newer: Frames:base, Frames:ghc-prim, streamly-bytestring:bytestring

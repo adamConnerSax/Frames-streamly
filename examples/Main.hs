@@ -62,7 +62,7 @@ main = do
               V.:& FStreamly.liftFieldFormatter (Text.pack . Printf.printf "%.1f")
               V.:& FStreamly.liftFieldFormatter (Text.pack . Printf.printf "%.1f")
               V.:& V.RNil
-      csvTextStream = FStreamly.streamSV' formatRow "," $ FStreamly.foldableToStream @_ @FStreamly.DefaultStream forestFires'
+      csvTextStream = FStreamly.streamSV' mempty formatRow "," $ FStreamly.foldableToStream @_ @FStreamly.DefaultStream forestFires'
 --      csvTextStreamCS = FStreamly.streamSV' formatRow "," $ Streamly.fromFoldable forestFiresColSubset'
 
 --  putStrLn $ intercalate "\n" $ fmap show $ FL.fold FL.list forestFiresColSubset'
