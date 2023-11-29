@@ -46,8 +46,12 @@ import qualified Streamly.FileSystem.File      as Streamly.File
 import qualified Streamly.Unicode.Stream           as Unicode
 import qualified Streamly.Data.Unfold          as Streamly.Unfold
 import qualified Streamly.FileSystem.Handle    as Streamly.Handle
-import qualified Streamly.Internal.Data.Stream.Chunked as Array.Stream
 import qualified Streamly.External.ByteString as Streamly.BS
+#if MIN_VERSION_streamly_core(0,2,0)
+import qualified Streamly.Internal.Data.Array.Stream as Array.Stream
+#else
+import qualified Streamly.Internal.Data.Stream.Chunked as Array.Stream
+#endif
 #elif MIN_VERSION_streamly(0,8,0)
 import qualified Streamly.Prelude                       as Streamly
 import qualified Streamly.Data.Fold                     as Streamly.Fold
