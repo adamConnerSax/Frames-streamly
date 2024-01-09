@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveFunctor #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -35,11 +36,14 @@ import qualified Data.Vector as Vec
 import qualified Data.Vector.Unboxed as UVec
 import Data.Vector.Unboxed (Vector)
 import Language.Haskell.TH
+import qualified Flat
 
 -- | Represent data that may be present or missing in a data-set, but is definitely of type @a@
 -- This is isomorphic to Maybe but a different type is used to avoid orphan instances for
 -- @Unbox@ and type instance @VectorFor@
-data OrMissing a = Missing | Present a deriving (Show, Eq, Ord, Generic, Functor, Typeable)
+data OrMissing a = Missing | Present a
+  deriving (Show, Eq, Ord, Generic, Functor, Typeable, Flat.Flat)
+
 
 toMaybe :: OrMissing a -> Maybe a
 toMaybe Missing = Nothing
