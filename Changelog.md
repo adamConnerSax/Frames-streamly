@@ -1,7 +1,9 @@
+v0.3.4
+* Added Flat instance for OrMissing
+
 v0.3.2
 * Added ability to rewrite headers for CSV output
 * RowGen now stored the FilePath so it can be added as a TH dependency for recompilation checking
-
 
 v0.3.1
 * Added code/cabal bounds (behind “streamly9” flag) for >= streamly-0.9
