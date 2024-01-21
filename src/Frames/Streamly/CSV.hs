@@ -82,6 +82,7 @@ module Frames.Streamly.CSV
     , foldableToStream
     , liftFieldFormatter
     , liftFieldFormatter1
+    , quoteField
     , formatTextAsIs
     , formatWithShow
     , formatWithShowCSV
@@ -332,6 +333,13 @@ liftFieldFormatter1 :: (Functor f, Vinyl.KnownField t)
                     -> Vinyl.Lift (->) (f Vinyl.:. Vinyl.ElField) (Vinyl.Const T.Text) t
 liftFieldFormatter1 toTxt = Vinyl.Lift $ Vinyl.Const . toTxt . fmap Vinyl.getField . Vinyl.getCompose
 {-# INLINEABLE liftFieldFormatter1 #-}
+
+
+-- | add quoting
+quoteField :: Vinyl.Lift (->) Vinyl.ElField (Vinyl.Const T.Text) t
+           -> Vinyl.Lift (->) Vinyl.ElField (Vinyl.Const T.Text) t
+quoteField (Vinyl.Lift f) = Vinyl.Lift $ \x -> Vinyl.Const $ "\"" <> Vinyl.getConst (f x) <> "\""
+
 
 -- | Format a @Text@ field as-is.
 formatTextAsIs :: (Vinyl.KnownField t, Vinyl.Snd t ~ T.Text)
