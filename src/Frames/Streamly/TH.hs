@@ -41,6 +41,7 @@ module Frames.Streamly.TH
   , prefixColumns
   , prefixAsNamed
   , columnSubset
+  , excludeColumns
   , renamedHeaderSubset
   , renameSomeUsingNames
   , renameSomeUsingPositions
@@ -65,7 +66,7 @@ import Frames.Streamly.Streaming.Streamly (StreamlyStream, Stream)
 #else
 import Frames.Streamly.Streaming.Streamly (StreamlyStream, SerialT)
 #endif
-import Frames.Streamly.Streaming.Pipes (PipeStream)
+--import Frames.Streamly.Streaming.Pipes (PipeStream)
 import Frames.Streamly.Streaming.Class
 import Frames.Streamly.Streaming.Common (Separator(..))
 import qualified Frames.Streamly.CSV as SCSV
@@ -377,6 +378,14 @@ columnSubset s rgch = ICSV.modifyColumnSelector rgch g h where
   g f = \x -> if x `Set.member` s then f x else ICSV.Exclude
   h mrF cids = mrF cids ++ inSetButNotList s cids
 {-# INLINEABLE columnSubset #-}
+
+-- | Generate types for only a subset of the columns.
+-- Generated 'ParserOptions' will select the correct columns when loading.
+excludeColumns :: Ord (ICSV.ColumnIdType a) => Set (ICSV.ColumnIdType a) -> ICSV.RowGenColumnSelector a -> ICSV.RowGenColumnSelector a
+excludeColumns s rgch = ICSV.modifyColumnSelector rgch g h where
+  g f = \x -> if not (x `Set.member` s) then f x else ICSV.Exclude
+  h mrF cids = mrF cids ++ inSetButNotList s cids
+{-# INLINEABLE excludeColumns #-}
 
 -- | Generate Column Type Names for only the headers given in the map.  Use
 -- the names given as values in the map rather than those in the header.
