@@ -57,6 +57,7 @@ library
       src
 --  ghc-options: -Wall -O2 -fdicts-strict -fmax-worker-args=16 -fspec-constr-recursive=16 -fplugin=Fusion.Plugin
   ghc-options: -Wall -O2 -fdicts-strict -fmax-worker-args=16 -fspec-constr-recursive=16
+  default-extensions: StrictData
   build-depends:
       Frames >=0.6 && <0.8
     , base >=4.12.0 && <5
