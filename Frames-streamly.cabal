@@ -1,4 +1,4 @@
-cabal-version: 2.2
+cabal-version: 3.0
 
 name:           Frames-streamly
 version:        0.3.4.0
@@ -13,10 +13,10 @@ copyright:      2020 Adam Conner-Sax
 license:        BSD-3-Clause
 license-file:   LICENSE
 build-type:     Simple
-extra-source-files:
+extra-doc-files:
     Changelog.md
     Readme.md
-data-files: forestfires.csv
+data-files: forestFires.csv
 data-dir:   example_data
 
 flag dump-core
@@ -99,6 +99,8 @@ executable Demo
       DemoPaths
       DayOfWeek
       Paths_Frames_streamly
+  autogen-modules:
+     Paths_Frames_streamly
   hs-source-dirs:
       examples
   ghc-options: -Wall -O2 -fdicts-strict -fmax-worker-args=16 -fspec-constr-recursive=16
@@ -128,6 +130,8 @@ test-suite FramesStreamlySpec
                  SpecHelper
                  DemoPaths
                  Paths_Frames_streamly
+  autogen-modules:
+     Paths_Frames_streamly
   hs-source-dirs:
       test
   ghc-options: -Wall -O2 -static -fdicts-strict -fmax-worker-args=16 -fspec-constr-recursive=16
@@ -152,6 +156,8 @@ benchmark bench-frames-streamly
   type:                exitcode-stdio-1.0
   hs-source-dirs:      bench
   other-modules: Paths Paths_Frames_streamly
+  autogen-modules:
+     Paths_Frames_streamly
 --  ghc-options:         -O2 -fspec-constr-recursive=16 -fmax-worker-args=16 -funbox-strict-fields -fplugin=Fusion.Plugin
   ghc-options:         -O2 -fspec-constr-recursive=16 -fmax-worker-args=16 -funbox-strict-fields -fplugin=Fusion.Plugin
   main-is:             Bench.hs
