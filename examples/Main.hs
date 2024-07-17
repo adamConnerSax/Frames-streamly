@@ -30,18 +30,19 @@ import Data.Text (Text) -- for Frames template splicing
 import qualified Data.Text as Text
 
 import qualified Control.Foldl as FL
+import Control.Monad.IO.Class (liftIO)
 import Data.List (intercalate)
 import DemoPaths (cesPath)
 
-FStreamly.tableTypes' Paths.ffBaseRowGen
-FStreamly.tableTypes' Paths.ffColSubsetRowGen
-FStreamly.tableTypes' Paths.ffColSubsetRowGenCat
---FStreamly.tableTypes' Paths.cesRowGen
-FStreamly.tableTypes' Paths.ffInferOrMissingRG
-FStreamly.tableTypes' Paths.ffInferOrMissingCatRG
-FStreamly.tableTypes' Paths.ffInferTypedDayRG
-FStreamly.tableTypes' Paths.ffInferTypedDayOrMissingRG
-FStreamly.tableTypes' Paths.ffInferTypedDayMonthRG
+liftIO Paths.ffBaseRowGenIO >>= FStreamly.tableTypes'
+liftIO Paths.ffColSubsetRowGenIO >>= FStreamly.tableTypes'
+liftIO Paths.ffColSubsetRowGenCatIO >>= FStreamly.tableTypes'
+--liftIO FStreamly.tableTypes' Paths.cesRowGen
+liftIO Paths.ffInferOrMissingRGIO >>= FStreamly.tableTypes'
+liftIO Paths.ffInferOrMissingCatRGIO >>= FStreamly.tableTypes'
+liftIO Paths.ffInferTypedDayRGIO >>= FStreamly.tableTypes'
+liftIO Paths.ffInferTypedDayOrMissingRGIO >>= FStreamly.tableTypes'
+liftIO Paths.ffInferTypedDayMonthRGIO >>= FStreamly.tableTypes'
 
 readTableOpt = FStreamly.readTableOpt @_ @FStreamly.DefaultStream
 
