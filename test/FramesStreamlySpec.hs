@@ -19,17 +19,18 @@ import qualified Frames.Streamly.Streaming.Pipes as Streaming
 import qualified Frames.Streamly.Streaming.Streamly as Streaming
 import qualified Frames
 import qualified Control.Foldl as Foldl
+import Control.Monad.IO.Class (liftIO)
 import Pipes.Safe()
 
 numRecs :: Foldable f => f a -> Int
 numRecs = Foldl.fold Foldl.length
 
-FStreamly.tableTypes "ForestFires" (Paths.thPath Paths.forestFiresPath)
-FStreamly.tableTypes' Paths.ffColSubsetRowGen
-FStreamly.tableTypes' Paths.ffRenameDayRowGen
-FStreamly.tableTypes' Paths.ffNoHeaderRowGen
-FStreamly.tableTypes' Paths.ffIgnoreHeaderRowGen
-FStreamly.tableTypes' Paths.ffIgnoreHeaderChooseNamesRowGen
+liftIO (Paths.usePath Paths.forestFiresPath) >>= \fp -> FStreamly.tableTypes "ForestFires" fp --(Paths.thPath Paths.forestFiresPath)
+liftIO Paths.ffColSubsetRowGenIO >>= FStreamly.tableTypes'
+liftIO Paths.ffRenameDayRowGenIO >>= FStreamly.tableTypes'
+liftIO Paths.ffNoHeaderRowGenIO >>= FStreamly.tableTypes'
+liftIO Paths.ffIgnoreHeaderRowGenIO >>= FStreamly.tableTypes'
+liftIO Paths.ffIgnoreHeaderChooseNamesRowGenIO >>= FStreamly.tableTypes'
 
 -- TODO
 -- 1. Test renameSome
@@ -69,6 +70,8 @@ spec = do
           runIO $ Streaming.runSafe @s $ FStreamly.inCoreAoS $ FStreamly.readTableOpt @_ @s @IO fFIgnoreHeaderChooseNamesParser forestFiresPath
         describe desc $ do
           context "Can generate types and load the corresponding data a variety of ways" $ do
+            it "frames are not empty!" $
+              numRecs forestFires /= 0
             it "load frames and insure all have same number of rows (AllCols  vs. ColSubset)" $
               numRecs forestFires == numRecs forestFiresColSubset
             it "load frames and insure all have same number of rows (AllCols  vs. NoHeader)" $
@@ -88,5 +91,5 @@ spec = do
               forestFiresIgnoreHeaderChooseNames == forestFiresRenameDay
             it "throw an exception when parsing (ignoring or absent a header line) a file with the wrong number of columns" $ do
               (Streaming.runSafe @s $ FStreamly.inCoreAoS $ FStreamly.readTableOpt @(Frames.RecordColumns ForestFires) @s @IO fFIgnoreHeaderParser forestFiresFewerColsPath) `shouldThrow` wrongNumberColumnsSelector
-  specF @(Streaming.StreamlyStream Streaming.SerialT) "Streamly backend"
+  specF @(Streaming.StreamlyStream Streaming.Stream) "Streamly backend"
   specF @Streaming.PipeStream "Pipes backend"

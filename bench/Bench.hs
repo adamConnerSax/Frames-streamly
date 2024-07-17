@@ -1,8 +1,10 @@
 {-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TemplateHaskell #-}
@@ -16,6 +18,7 @@ import Paths
 import qualified Frames.Streamly.CSV as FStreamly
 import qualified Frames.Streamly.InCore as FStreamly
 import qualified Frames.Streamly.LoadInCore as FStreamly
+import qualified Frames.Streamly.Transform as FStreamly
 import qualified Frames.Streamly.TH as FStreamly
 import qualified Frames.Streamly.ColumnUniverse as FStreamly
 import qualified Frames.Streamly.Streaming.Class as Streaming
@@ -204,6 +207,38 @@ inferTypesF fp = do
   _ <- Frames.runSafeT $ readColHeaders @(Frames.CoRec Frames.ColInfo Frames.CommonColumns) fFParser lr
   return ()
 
+
+concatFrames :: forall s. Streaming.StreamFunctionsIO s IO
+             => (forall rs . (FStreamly.RecVec rs) => [Frames.FrameRec rs] -> IO (Frames.FrameRec rs))
+             -> Int -> Int -> IO Double
+concatFrames fConcat numCopies numRows = do
+  forestFiresPathPrefix <- Paths.usePath Paths.forestFiresPrefix
+  let forestFiresPath = forestFiresPathPrefix <> show numRows <> ".csv"
+  forestFires :: Frames.Frame FFNew <- Streaming.runSafe @s $ FStreamly.inCoreAoS $ FStreamly.readTableOpt @_ @s @IO fFNewParser forestFiresPath
+  let !manyFrames = replicate numCopies forestFires
+  newFrame <- fConcat manyFrames
+  pure $ FL.fold (FL.premap (Frames.rgetField @FFMC) FL.sum) newFrame
+
+frameConcatMonoid :: (FStreamly.RecVec rs, Foldable f, Functor f) => f (Frames.FrameRec rs) -> Frames.FrameRec rs
+frameConcatMonoid x = mconcat $ toList x
+
+frameConcatToFrame :: (FStreamly.RecVec rs, Foldable f, Functor f) => f (Frames.FrameRec rs) -> Frames.FrameRec rs
+frameConcatToFrame x =  if length x < 500
+                        then mconcat $ toList x
+                        else Frames.toFrame $ concatMap toList x
+
+benchConcat includeMonoid n m = bgroup ("concat " <> show n <> "x" <> show m) $
+                                ((if includeMonoid
+                                   then [bench "monoid" $ nfIO (concatFrames @(FStreamly.DefaultStream)  (pure . frameConcatMonoid) n m)]
+                                   else [])
+                                  <>
+                                  [
+                                    bench "toFrame" $ nfIO (concatFrames @(FStreamly.DefaultStream) (pure . frameConcatToFrame) n m)
+                                  , bench "streamly" $ nfIO (concatFrames @(FStreamly.DefaultStream) (pure . FStreamly.frameConcat) n m)
+                                  ]
+                                )
+
+
 main :: IO ()
 main = do
   forestFiresPathPrefix <- Paths.usePath Paths.forestFiresPrefix
@@ -218,10 +253,16 @@ main = do
                                     , bench "Streamly" $ nfIO (loadAndTransform @(FStreamly.DefaultStream) 500)
                                     , bench "Frames" $ nfIO (loadAndTransformF 500)
                               ]
-
 -}
+    benchConcat True 100 500
+    , benchConcat True 500 500
+    , benchConcat True 1000 500
+    , benchConcat False 2000 500
 
-    bgroup "inference (1000/5000)" [ bench "Pipes" $ nfIO (inferTypes $ ffNewRowGenP fp5000)
+
+
+{-
+    , bgroup "inference (1000/5000)" [ bench "Pipes" $ nfIO (inferTypes $ ffNewRowGenP fp5000)
                                    , bench "Streamly" $ nfIO (inferTypes $ ffNewRowGenS fp5000)
                                    , bench "Frames" $ nfIO $ inferTypesF fp5000
                                    , bench "Pipes/subset" $ nfIO $ inferTypes $ ffColSubsetRowGen "forestFires5000.csv"
@@ -246,6 +287,7 @@ main = do
     , bgroup "loadInCore (5000)" [ bench "Pipes" $ nfIO (loadInCore @StreamP.PipeStream 5000)
                                  , bench "Streamly" $ nfIO (loadInCore @(FStreamly.DefaultStream) 5000)
                                  ]
+-}
 {-
     , bgroup "loadInCore2 (5000)" [ bench "Pipes" $ nfIO (loadInCore2 @StreamP.PipeStream 5000)
                                   , bench "Streamly" $ nfIO (loadInCore2 @(FStreamly.DefaultStream) 5000)
@@ -258,7 +300,7 @@ main = do
                                       , bench "Streamly" $ nfIO (loadAndTransform @(FStreamly.DefaultStream) 50000)
                                       , bench "Frames" $ nfIO (loadAndTransformF 50000)
                                     ]
--}
+
     , bgroup "colSubset (5000)" [ bench "Pipes/load-subset" $ nfIO (loadSubset @StreamP.PipeStream 5000)
                                 , bench "Pipes/rcast" $ nfIO (rcastSubset @StreamP.PipeStream 5000)
                                 , bench "Streamly/load-subset" $ nfIO (loadSubset @(FStreamly.DefaultStream) 5000)
@@ -274,7 +316,6 @@ main = do
                                      ]
 
 
-  {-
   , bgroup "loadAndCountRecs (500000)" [ bench "Pipes" $ nfIO (loadAndCountRecs @StreamP.PipeStream 500000)
                                    , bench "Streamly" $ nfIO (loadAndCountRecs @(FStreamly.DefaultStream) 500000)
                                    , bench "Frames" $ nfIO (loadAndCountRecsF 500000)

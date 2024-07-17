@@ -7,6 +7,7 @@
 {-# LANGUAGE RankNTypes        #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StrictData #-}
+{-# LANGUAGE Strict #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
@@ -28,6 +29,7 @@ this way, using Pipes and the ST monad.
 -}
 module Frames.Streamly.Transform
     ( transform
+    , frameConcat
     , filter
     , concurrentMapM
     , mapMaybe
@@ -119,6 +121,15 @@ concurrentMapMaybeM :: (Prim.PrimMonad m
                        ) => (Frames.Record as -> m (Maybe (Frames.Record bs))) -> Frames.FrameRec as -> m (Frames.FrameRec bs)
 concurrentMapMaybeM f = transform (Streamly.catMaybes . Streamly.parMapM (Streamly.ordered True) f)
 {-# INLINE concurrentMapMaybeM #-}
+
+frameConcat :: (FS.RecVec rs, Foldable f, Functor f) => f (Frames.FrameRec rs) -> Frames.FrameRec rs
+frameConcat x = if length x < 500
+                then mconcat $ toList x
+                else runST $ FS.inCoreAoS .  StreamlyStream . Streamly.concatMap (StreamK.toStream .  StreamK.fromFoldable)  $  StreamK.toStream $ StreamK.fromFoldable x
+{-# INLINEABLE frameConcat #-}
+
+
+
 #else
 -- | Use streamly to transform a frame.
 transform ::
