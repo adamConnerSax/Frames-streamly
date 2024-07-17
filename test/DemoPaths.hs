@@ -19,8 +19,8 @@ forestFiresNoHeaderPath = "forestFiresNoHeader.csv"
 forestFiresFewerColsPath :: FilePath
 forestFiresFewerColsPath = "forestFiresFewerCols.csv"
 
-thPath :: FilePath -> FilePath
-thPath x = "./example_data/" ++ x
+--thPath :: FilePath -> FilePath
+--thPath x = "./example_data/" ++ x
 
 usePath :: FilePath -> IO FilePath
 usePath x =  fmap (\dd -> dd ++ "/" ++ x) Paths.getDataDir
