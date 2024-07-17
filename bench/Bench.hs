@@ -36,11 +36,12 @@ import qualified Pipes.Prelude as Pipes
 
 import GHC.TypeLits (KnownSymbol)
 import qualified Control.Foldl as FL
+import Control.Monad.IO.Class (liftIO)
 
-FStreamly.tableTypes' ffNewRowGen
-Frames.tableTypes' ffRowGen
-FStreamly.tableTypes' (ffColSubsetRowGen "forestFires.csv")
-FStreamly.tableTypes' (ffInferTypedSubsetRG  "forestFires.csv")
+liftIO ffNewRowGenIO >>= FStreamly.tableTypes'
+liftIO ffRowGenIO >>= Frames.tableTypes'
+liftIO (ffColSubsetRowGenIO "forestFires.csv") >>= FStreamly.tableTypes'
+liftIO (ffInferTypedSubsetRGIO  "forestFires.csv") >>= FStreamly.tableTypes'
 
 
 loadAndCountLines :: forall s. Streaming.StreamFunctionsIO s IO => Int -> IO Int

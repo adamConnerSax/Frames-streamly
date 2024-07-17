@@ -41,41 +41,48 @@ forestFiresNoHeaderPath = "forestFiresNoHeader.csv"
 forestFiresFewerColsPath :: FilePath
 forestFiresFewerColsPath = "forestFiresFewerCols.csv"
 
-thPath :: FilePath -> FilePath
-thPath x = "./example_data/" ++ x
+--thPath :: FilePath -> FilePath
+--thPath x = "./example_data/" ++ x
 
 usePath :: FilePath -> IO FilePath
 usePath x =  fmap (\dd -> dd ++ "/" ++ x) Paths.getDataDir
 
 
-ffRowGen :: Frames.RowGen Frames.CommonColumns
-ffRowGen = (Frames.rowGen (thPath forestFiresPath)) { Frames.rowTypeName = "FF" }
+ffRowGenIO :: IO (Frames.RowGen Frames.CommonColumns)
+ffRowGenIO = do
+  fp <- usePath forestFiresPath
+  pure $ (Frames.rowGen fp) { Frames.rowTypeName = "FF" }
 
-ffNewRowGen :: FStreamly.RowGen FStreamly.DefaultStream 'FStreamly.ColumnByName Frames.CommonColumns
-ffNewRowGen = (FStreamly.rowGen (thPath forestFiresPath)) { FStreamly.rowTypeName = "FFNew" }
+ffNewRowGenIO :: IO (FStreamly.RowGen FStreamly.DefaultStream 'FStreamly.ColumnByName Frames.CommonColumns)
+ffNewRowGenIO = do
+  fp <- usePath forestFiresPath
+  pure $ (FStreamly.rowGen fp) { FStreamly.rowTypeName = "FFNew" }
 
-ffNewRowGenP :: FilePath -> FStreamly.RowGen StreamP.PipeStream 'FStreamly.ColumnByName Frames.CommonColumns
-ffNewRowGenP fp = rg  { FStreamly.rowTypeName = "FFNew"
-                      , FStreamly.lineReader = \sep -> sTokenized sep (FStreamly.quotingMode rg) fp --FStreamly.streamTokenized' @StreamP.PipeStream @IO fp
-                      }
-  where
-    rg = FStreamly.rowGen (thPath forestFiresPath)
+ffNewRowGenPIO :: FilePath -> IO (FStreamly.RowGen StreamP.PipeStream 'FStreamly.ColumnByName Frames.CommonColumns)
+ffNewRowGenPIO fp = do
+  ffp <- usePath forestFiresPath
+  let rg = FStreamly.rowGen ffp
+  pure $ rg  { FStreamly.rowTypeName = "FFNew"
+             , FStreamly.lineReader = \sep -> sTokenized sep (FStreamly.quotingMode rg) fp --FStreamly.streamTokenized' @StreamP.PipeStream @IO fp
+             }
 
+ffNewRowGenSIO :: FilePath -> IO (FStreamly.RowGen (FStreamly.DefaultStream) 'FStreamly.ColumnByName Frames.CommonColumns)
+ffNewRowGenSIO fp = do
+  ffp <- usePath forestFiresPath
+  let rg = FStreamly.rowGen ffp
+  pure  $ rg
+    { FStreamly.rowTypeName = "FFNew"
+    , FStreamly.lineReader = \sep -> sTokenized sep (FStreamly.quotingMode rg) fp --FStreamly.streamTokenized' @(StreamS.StreamlyStream StreamS.SerialT) @IO fp
+    }
 
-ffNewRowGenS :: FilePath -> FStreamly.RowGen (FStreamly.DefaultStream) 'FStreamly.ColumnByName Frames.CommonColumns
-ffNewRowGenS fp = rg
-                  { FStreamly.rowTypeName = "FFNew"
-                  , FStreamly.lineReader = \sep -> sTokenized sep (FStreamly.quotingMode rg) fp --FStreamly.streamTokenized' @(StreamS.StreamlyStream StreamS.SerialT) @IO fp
-                  }
-  where
-    rg = FStreamly.rowGen (thPath forestFiresPath)
-
-ffColSubsetRowGen :: FilePath -> FStreamly.RowGen FStreamly.DefaultStream 'FStreamly.ColumnByName Frames.CommonColumns
-ffColSubsetRowGen fp = FStreamly.modifyColumnSelector modSelector rowGen
-  where
+ffColSubsetRowGenIO :: FilePath -> IO (FStreamly.RowGen FStreamly.DefaultStream 'FStreamly.ColumnByName Frames.CommonColumns)
+ffColSubsetRowGenIO fp = do
+  fp' <- usePath fp
+  let
     rowTypeName = "FFColSubset"
-    rowGen = (FStreamly.rowGen (thPath fp)) { FStreamly.rowTypeName = rowTypeName }
+    rowGen = (FStreamly.rowGen fp') { FStreamly.rowTypeName = rowTypeName }
     modSelector = FStreamly.columnSubset (Set.fromList $ fmap FStreamly.HeaderText ["X","Y","month","day","temp"])
+  pure $ FStreamly.modifyColumnSelector modSelector rowGen
 
 data Mth = Jan | Feb | Mar | Apr | May | Jun | Jul | Aug | Sep | Oct | Nov | Dec deriving (Enum, Bounded)
 FStreamly.derivingOrMissingUnboxVectorFor'
@@ -141,8 +148,10 @@ dayMonthColsParserHowRec = FStreamly.parseableParseHowRec
      V.:& pph
      V.:& V.RNil
 -}
-ffInferTypedSubsetRG :: FilePath -> FStreamly.RowGen FStreamly.DefaultStream 'FStreamly.ColumnByName ParsedCols
-ffInferTypedSubsetRG fp = (ffColSubsetRowGen fp) { FStreamly.columnParsers = dayMonthColsParserHowRec
-                                                 , FStreamly.tablePrefix ="P"
-                                                 , FStreamly.rowTypeName = "FFInferTyped"
-                                                 }
+ffInferTypedSubsetRGIO :: FilePath -> IO (FStreamly.RowGen FStreamly.DefaultStream 'FStreamly.ColumnByName ParsedCols)
+ffInferTypedSubsetRGIO fp = do
+  rg <- ffColSubsetRowGenIO fp
+  pure $ rg { FStreamly.columnParsers = dayMonthColsParserHowRec
+            , FStreamly.tablePrefix ="P"
+            , FStreamly.rowTypeName = "FFInferTyped"
+            }
