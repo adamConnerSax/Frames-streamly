@@ -42,7 +42,7 @@ import qualified Flat
 -- This is isomorphic to Maybe but a different type is used to avoid orphan instances for
 -- @Unbox@ and type instance @VectorFor@
 data OrMissing a = Missing | Present a
-  deriving (Show, Eq, Ord, Generic, Functor, Typeable, Flat.Flat)
+  deriving (Show, Eq, Ord, Generic, Functor, Flat.Flat)
 
 
 toMaybe :: OrMissing a -> Maybe a

@@ -35,7 +35,7 @@ import Language.Haskell.TH
 -- textual names. Any value of type @Categorical n@ has no more than
 -- @n@ variants.
 newtype Categorical (n :: Nat) = Categorical { categories :: Set Text }
-  deriving (Eq, Show, Typeable)
+  deriving (Eq, Show)
 
 -- | Ensure the first character of a 'String' is uppercase.
 cap :: String -> String
