@@ -86,6 +86,13 @@ module Frames.Streamly.CSV
     , formatTextAsIs
     , formatWithShow
     , formatWithShowCSV
+    , formatWithPrintf'
+    , formatWithPrintf
+    , formatFloatWithPrintf'
+    , formatFloatWithPrintf
+    , formatAsPctWithPrintf
+    , addTextToFormat
+
     -- * TH Support
     , sTokenized
     , ColTypeInfo(..)
@@ -130,7 +137,8 @@ import qualified Data.Set as Set
 
 import qualified Data.Strict.Either as Strict
 import qualified Data.Strict.Maybe as Strict
-import qualified Data.Text                              as T
+import qualified Data.Text as T
+import qualified Text.Printf as PF
 
 import qualified Data.Map.Strict as M
 import qualified Data.Vinyl                             as Vinyl
@@ -358,6 +366,41 @@ formatWithShowCSV :: (Vinyl.KnownField t, Frames.ShowCSV (Vinyl.Snd t))
                   => Vinyl.Lift (->) Vinyl.ElField (Vinyl.Const T.Text) t
 formatWithShowCSV = liftFieldFormatter Frames.showCSV
 {-# INLINE formatWithShowCSV #-}
+
+-- format a field with Printf after transforming it with f
+formatWithPrintf' :: (Vinyl.KnownField t, PF.PrintfArg a, Vinyl.Snd t ~ b) => (b -> a) -> Text -> Vinyl.Lift (->) Vinyl.ElField (Vinyl.Const Text) t
+formatWithPrintf' f fmt = liftFieldFormatter $ toText @String . printf . f
+  where printf = PF.printf (toString fmt)
+{-# INLINE formatWithPrintf' #-}
+
+-- format a field with Printf
+formatWithPrintf :: (Vinyl.KnownField t, PF.PrintfArg a, Vinyl.Snd t ~ a) => Text -> Vinyl.Lift (->) Vinyl.ElField (Vinyl.Const Text) t
+formatWithPrintf = formatWithPrintf' id
+{-# INLINE formatWithPrintf #-}
+
+-- format a numeric field with Printf after transforming it with f
+formatFloatWithPrintf' :: (Vinyl.KnownField t, PF.PrintfArg a, Floating a, Vinyl.Snd t ~ b) => (b -> a) -> Int -> Vinyl.Lift (->) Vinyl.ElField (Vinyl.Const Text) t
+formatFloatWithPrintf' f prec = formatWithPrintf' f  ("%." <> show prec <> "g")
+{-# INLINE formatFloatWithPrintf' #-}
+
+-- format a numeric field with Printf
+formatFloatWithPrintf :: (Vinyl.KnownField t, PF.PrintfArg a, Floating a, Vinyl.Snd t ~ a) => Int -> Vinyl.Lift (->) Vinyl.ElField (Vinyl.Const Text) t
+formatFloatWithPrintf = formatFloatWithPrintf' id
+{-# INLINE formatFloatWithPrintf #-}
+
+-- format a numeric field as a percentage
+formatAsPctWithPrintf :: (Vinyl.KnownField t, PF.PrintfArg a, Floating a, Vinyl.Snd t ~ a) => Int -> Vinyl.Lift (->) Vinyl.ElField (Vinyl.Const Text) t
+formatAsPctWithPrintf = addTextToFormat "" "%" . formatFloatWithPrintf' (*100)
+{-# INLINE formatAsPctWithPrintf #-}
+
+-- add const text format
+addTextToFormat :: Text -> Text -> Vinyl.Lift (->) Vinyl.ElField (Vinyl.Const Text) t -> Vinyl.Lift (->) Vinyl.ElField (Vinyl.Const Text) t
+addTextToFormat before after (Vinyl.Lift f) =
+  Vinyl.Lift (\x -> Vinyl.Const $ before <> Vinyl.getConst (f x) <> after)
+{-# INLINE addTextToFormat #-}
+
+
+
 
 -- NB: Uses some internal modules from Streamly.  Will have to change when they become stable
 -- | write a stream of @Records@ to a file, one line per @Record@.
